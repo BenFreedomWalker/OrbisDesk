@@ -181,6 +181,26 @@ for replaced,entry in world_build['replaces'].items():
     if sha(ROOT/entry['object'])!=entry['sha256']:raise SystemExit('wow64 world object changed after its build: '+entry['object'])
     if command.count(str(ROOT/replaced))!=1:raise SystemExit('Expected one '+replaced+' in the link')
     command=[str(ROOT/entry['object']) if arg==str(ROOT/replaced) else arg for arg in command]
+# Wine's client server.c uses writev for requests with data. Redirect just that object
+# so every Wine client uses bounded writes, including the title's HID thread (run-0147).
+request_client=ROOT/'build/wow64-world-ps4/server.o'
+request_client_chunked=work/'server-request-chunks.o'
+request_writer_source=ROOT/'platform/ps4/pw_wine_request_write.c'
+request_writer=work/'pw_wine_request_write.o'
+if command.count(str(request_client))!=1:
+    raise SystemExit('Expected exactly one Wine client request object in the link')
+def undefined_symbols(obj):
+    listing=subprocess.check_output(['llvm-nm-19','--undefined-only',str(obj)],text=True)
+    return {line.split()[-1] for line in listing.splitlines() if line.strip()}
+original_imports=undefined_symbols(request_client)
+if 'writev' not in original_imports:
+    raise SystemExit('Wine client object no longer calls writev')
+run(['llvm-objcopy-19','--redefine-sym=writev=pw_wine_request_writev',request_client,request_client_chunked])
+if undefined_symbols(request_client_chunked)!=(original_imports-{'writev'})|{'pw_wine_request_writev'}:
+    raise SystemExit('Unexpected Wine client imports after request writer substitution')
+run([*flags,'-c',request_writer_source,'-o',request_writer])
+command[command.index(str(request_client))]=str(request_client_chunked)
+command[1:1]=[str(request_writer)]
 # Keep the proven library search order: build/wine-boot/lib/libc.a must win over the SDK
 # libc.a, whose readlink/lstat are raw FreeBSD syscalls (ENOSYS for W001 on hardware).
 # The Steam client inside the title (tools/build-steam-hosted.py): one object whose only globals are
@@ -189,7 +209,7 @@ steam_build=json.loads((ROOT/'build/steam-hosted/manifest.json').read_text())
 steam_object=ROOT/steam_build['object']
 if sha(steam_object)!=steam_build['object_sha256']:raise SystemExit('Steam object differs from its build')
 command[1:1]=[str(steam_object)]
-command[1:1]=['--wrap=exit','--wrap=_exit','--wrap=sceKernelDebugOutText','--wrap=write','--wrap=vfprintf','--wrap=fprintf','--wrap=fputs','--wrap=fwrite',str(wrapper),str(pad),str(overlay_obj)];command+=['-lSceSysmodule','-lSceSystemService','-lScePad','-lSceUserService','-lSceRtc','-lSceAudioOut']
+command[1:1]=['--wrap=exit','--wrap=_exit','--wrap=sceKernelDebugOutText','--wrap=write','--wrap=vfprintf','--wrap=fprintf','--wrap=fputs','--wrap=fwrite',str(wrapper),str(pad),str(overlay_obj)];command+=['-lSceSysmodule','-lSceSystemService','-lScePad','-lSceUserService','-lSceRtc','-lSceAudioOut','-lSceNet']
 run(command)
 def symbols(elf,flag):
     listing=subprocess.run(['llvm-nm-14',flag,str(elf)],capture_output=True,text=True,check=True).stdout
@@ -202,6 +222,26 @@ with (work/'build.log').open('a') as log:subprocess.run([str(sdk/'bin/linux/crea
     '-out=wine.oelf','--eboot',str(app.relative_to(work)/'eboot.bin'),'--paid','0x3800000000000011'],
     cwd=work,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
 (work/'wine.exec.oelf').write_bytes(set_exec_type(work/'wine.oelf',app/'eboot.bin'))
+# Phase B / P014 (separate-process research): the slim Wine child, bundled at /app0/pop-wine-join.elf. Built
+# with the PS4 payload SDK (like elfldr's own samples) so the GoldHEN resident loader's ELF path runs it;
+# the eboot's PWSEP watcher (native/pop_loader_spawn.h) sends it to the loader and it joins THIS title's
+# in-process wineserver by path (native/process_p014_child.c). Loader-dependent substrate, not shippable.
+PAYLOAD_SDK=ROOT/'.deps/process-loader/sdk/ps4-payload-sdk'
+sep_child_elf=app/'pop-wine-join.elf'
+subprocess.run([str(PAYLOAD_SDK/'bin/orbis-clang'),'-Wall','-O2','-ffile-prefix-map=%s=.'%ROOT,
+                '-I',str(ROOT/'native'),'-o',str(sep_child_elf),str(ROOT/'native/process_p014_child.c')],
+               cwd=ROOT,env=dict(os.environ,PS4_PAYLOAD_SDK=str(PAYLOAD_SDK)),check=True)
+# PoP D.7 (hardware 2026-11-13: after a console reboot separate programs failed until the loader was sent from a PC):
+# the resident loader the title sends to GoldHEN BinLoader (127.0.0.1:9090) when it does not answer
+# (native/pop_loader_spawn.h). The same verified build tools/start-process-loader.py sends (tools/build-process-loader.py,
+# pinned by tools/process-loader.lock.json), with its GPL-3.0-or-later corresponding source next to it.
+loader_dir=ROOT/'out/process-loader'
+loader_manifest=json.loads((loader_dir/'manifest.json').read_text())
+loader_raw=(loader_dir/'elfldr.elf').read_bytes()
+if hashlib.sha256(loader_raw).hexdigest()!=loader_manifest['artifacts']['elfldr.elf']['sha256']:
+    raise SystemExit('out/process-loader/elfldr.elf differs from its manifest')
+(app/'elfldr.elf').write_bytes(loader_raw)
+shutil.copyfile(loader_dir/'upstream-source.tar.gz',app/'elfldr-source.tar.gz')
 # Stage the same sealed prefix without DOS links: PS4 applications cannot use symbolic
 # links, so pw_wine_fs serves c: and z: from a fixed mount table.
 data=work/'runtime';data.mkdir(exist_ok=True)
@@ -412,6 +452,12 @@ for compiler,name in (('x86_64-w64-mingw32-gcc','d3d11test64.exe'),('i686-w64-mi
     subprocess.run([compiler,'-O2','-mwindows','-Wl,--no-insert-timestamp',str(ROOT/'fixtures/win32/d3d11test.c'),
                     '-o',str(work/name),'-ld3d11','-ldxgi','-luuid'],check=True)
     shutil.copyfile(work/name,prefix/'drive_c/orbis'/name)
+# Phase B / P014: a desktop EXE seeded to the "separate" execution mode (user.reg above). Launching it from
+# the desktop routes through kernelbase's PW_EXEC_SEPARATE path (tools/build-guest-hw.py), which spawns the
+# separate-process child that joins this wineserver and logs the PWSEP shared-object confirmation.
+subprocess.run(['x86_64-w64-mingw32-gcc','-O2','-mwindows','-Wl,--no-insert-timestamp',
+                str(ROOT/'fixtures/win32/separate_probe.c'),'-o',str(work/'separate_probe64.exe')],check=True)
+shutil.copyfile(work/'separate_probe64.exe',prefix/'drive_c/orbis/separate_probe64.exe')
 # W181: pad key profiles for keyboard-only games (native/hw_pad.c reads C:\orbis\padmaps\<exe>.ini when
 # the launcher runs that program); SuperMarioKart.exe's maps the pad to its arrows, space and Enter.
 (prefix/'drive_c/orbis/padmaps').mkdir(exist_ok=True)
@@ -561,6 +607,8 @@ for target in (data/'wine/lib/wine/x86_64-windows/taskmgr.exe',prefix/'drive_c/w
 # pinned one in both places; W180's winecfg froze applying a theme.
 winecfg=json.loads((ROOT/'out/winecfg-hw/manifest.json').read_text())
 if winecfg['builder_sha256']!=sha(ROOT/'tools/build-winecfg-hw.py'):raise SystemExit('winecfg differs from its builder')
+for source,digest in winecfg.get('input_sha256',{}).items():
+    if sha(ROOT/source)!=digest:raise SystemExit('winecfg input changed: '+source)
 for target in (data/'wine/lib/wine/x86_64-windows/winecfg.exe',prefix/'drive_c/windows/system32/winecfg.exe'):
     copy_verified(ROOT/'out/winecfg-hw'/winecfg['winecfg']['path'],target,winecfg['winecfg']['sha256'])
 # W174 (phase 8): the hardware nsi.dll (tools/build-nsi-hw.py): the network tables from libSceNetCtl
@@ -601,7 +649,10 @@ for name in games['system32']+games['notices']:
     copy_verified(ROOT/'out/games'/games['files'][name]['path'],prefix/'drive_c/windows/system32'/name,games['files'][name]['sha256'])
 # W052: ntdll and kernelbase that run 64-bit GUI programs as guests of this process
 # (tools/build-guest-hw.py), in the library directory and wherever the prefix has a copy.
-for name,e in json.loads((ROOT/'out/guest-hw/manifest.json').read_text())['modules'].items():
+guest64=json.loads((ROOT/'out/guest-hw/manifest.json').read_text())
+for source,digest in guest64.get('input_sha256',{}).items():
+    if sha(ROOT/source)!=digest:raise SystemExit('guest DLL input changed: '+source)
+for name,e in guest64['modules'].items():
     for target in (data/'wine/lib/wine/x86_64-windows'/name,prefix/'drive_c/windows/system32'/name):
         if target.parent.is_dir() and (target.exists() or target.parent.name=='x86_64-windows'):
             copy_verified(ROOT/'out/guest-hw'/e['path'],target,e['sha256'])
@@ -610,6 +661,8 @@ for name,e in json.loads((ROOT/'out/guest-hw/manifest.json').read_text())['modul
 # in a 64-bit process (tools/build-wow64-world-ps4.py); a relaunched 32-bit program keeps the stock ones.
 guest32=json.loads((ROOT/'out/guest-hw-i386/manifest.json').read_text())
 if guest32['builder_sha256']!=sha(ROOT/'tools/build-guest-hw.py'):raise SystemExit('i386 guest DLLs differ from their builder')
+for source,digest in guest32.get('input_sha256',{}).items():
+    if sha(ROOT/source)!=digest:raise SystemExit('i386 guest DLL input changed: '+source)
 (data/'wine/lib/wine/i386-guest').mkdir(parents=True,exist_ok=True)
 for name,e in guest32['modules'].items():
     copy_verified(ROOT/'out/guest-hw-i386'/e['path'],data/'wine/lib/wine/i386-guest'/name,e['sha256'])
@@ -878,9 +931,11 @@ text+='\n[Software\\\\Wine\\\\Drivers] 1793390636\n#time=1dd68a9cb52bf36\n"Audio
 # loader, MangoHud, Gecko's adapter query); system32\dxgi.dll is DXVK's (see the DXVK block).
 if '[Software\\\\Wine\\\\AppDefaults\\\\explorer.exe\\\\DllOverrides]' in text:raise SystemExit('user.reg: unexpected explorer.exe DllOverrides')
 text+='\n[Software\\\\Wine\\\\AppDefaults\\\\explorer.exe\\\\DllOverrides] 1793390636\n#time=1dd68a9cb52bf36\n"dxgi"="builtin"\n'
-# W190: the 64-bit Direct3D 11 test needs DXVK's dxgi, which only a title running alone gets.
-if '[Software\\\\Wine\\\\AppDefaults\\\\d3d11test64.exe]' in text:raise SystemExit('user.reg: unexpected d3d11test64.exe AppDefaults')
-text+='\n[Software\\\\Wine\\\\AppDefaults\\\\d3d11test64.exe] 1793390636\n#time=1dd68a9cb52bf36\n"OrbisRunsAlone"="Y"\n'
+# d3d11test64.exe now works as a desktop guest. Do not seed an exclusive execution rule.
+# Phase B / P014: seed separate_probe64.exe to the "separate" execution mode so launching it from the
+# desktop exercises the PW_EXEC_SEPARATE path (tools/build-guest-hw.py), which spawns the separate-process
+# child that joins this wineserver. ps4_execution_mode reads AppDefaults\<base>\OrbisExecutionMode (HKCU).
+text+='\n[Software\\\\Wine\\\\AppDefaults\\\\separate_probe64.exe] 1793390636\n#time=1dd68a9cb52bf36\n"OrbisExecutionMode"="separate"\n'
 # W045: a dark scheme through the system colours (the prefix's Colors key is empty, so Wine
 # used its classic grey). Light text on every dark face: buttons and taskbar, menus,
 # captions, windows, tooltips; blue selection with white text.
@@ -1361,6 +1416,12 @@ for source in ('native/dos_audio.c','native/doshost_win32.c','platform/ps4/pw_do
     manifest['source_hashes'][source]=sha(ROOT/source)
 manifest['product']={'name':'OrbisDesk','slug':'orbisdesk','state_root':'/data/orbisdesk',
     'upgrade_identity_preserved':True,'legacy_evidence_unchanged':True}
+manifest['request_writer']={
+    'client_object':str(request_client_chunked.relative_to(ROOT)),
+    'client_object_sha256':sha(request_client_chunked),
+    'writer_object':str(request_writer.relative_to(ROOT)),
+    'writer_object_sha256':sha(request_writer)}
+manifest['source_hashes'][str(request_writer_source.relative_to(ROOT))]=sha(request_writer_source)
 for source in ('platform/ps4/pw_brand.h','tools/project_brand.py','tools/orbis_package.py'):
     manifest['source_hashes'][source]=sha(ROOT/source)
 (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')

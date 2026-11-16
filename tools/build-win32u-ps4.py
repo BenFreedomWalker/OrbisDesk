@@ -470,7 +470,14 @@ revise('dlls/win32u/ps5drv.c','''    if ((window = find_window( hwnd )))
 # pointer, from the compositor's stack (the desktop window where there is none), as
 # winex11 passes the X window under the pointer; win32u then finds the child. Keys keep
 # the foreground window.
-revise('dlls/win32u/ps5drv.c','''static BOOL ps5_ProcessEvents( DWORD mask )''','''/* the top-level window under a screen point, top of the stack first */
+revise('dlls/win32u/ps5drv.c','''static BOOL ps5_ProcessEvents( DWORD mask )''','''/* PoP D.3: the separate process's window under a screen point, or 0. The title defines it
+ * (native/pop_loader_spawn.h); this weak default answers 0 in links without it (the diagnostic boot ELF),
+ * where an undefined weak reference would leave create-fself without a library for the symbol. Default
+ * visibility: win32u builds hidden, and a local copy would shadow the title's. */
+unsigned long long pw_hw_separate_window( int x, int y ) __attribute__((weak, visibility("default")));
+unsigned long long pw_hw_separate_window( int x, int y ) { (void)x; (void)y; return 0; }
+
+/* the top-level window under a screen point, top of the stack first */
 static HWND window_at( INT x, INT y )
 {
     GUITHREADINFO info = {.cbSize = sizeof(info)};
@@ -483,6 +490,15 @@ static HWND window_at( INT x, INT y )
      * only in that window's thread, so a drag lost its moves whenever the pointer got
      * ahead of the window (W057-W059: bursts with 1-5 s gaps) */
     if (tid && NtUserGetGUIThreadInfo( tid, &info ) && info.hwndCapture) return info.hwndCapture;
+    /* PoP D.3: a separate process's window is drawn above this process's windows (native/pop_loader_spawn.h),
+     * which this table does not hold. A point over it goes to that window, named by the handle its process
+     * sends with each frame: the server delivers to a given visible window in whatever thread or process owns
+     * it. (Hardware 2026-11-12: given this process's window underneath, the launcher's console and the file
+     * manager took the clicks; given the desktop window, the server's z-order still chose them.) */
+    {
+        HWND separate = (HWND)(ULONG_PTR)pw_hw_separate_window( x, y );
+        if (separate) return separate;
+    }
 
     pthread_mutex_lock( &screen_lock );
     for (i = window_count; i > 0 && !hwnd; i--)
@@ -1612,6 +1628,8 @@ BOOL WINAPI NtUserShowWindow( HWND hwnd, INT cmd )
 revise('dlls/win32u/ps5drv.c','''static POINT cursor;
 ''','''static POINT cursor;
 static RECT monitor_rect;   /* W248: the primary monitor, the display mode a game set (WindowPosChanged) */
+/* PoP D.6: the last display mode a game set (sysparams.c apply_display_settings) */
+UINT pw_mode_set_width, pw_mode_set_height;
 ''','The monitor rect for full screen windows (W248).')
 revise('dlls/win32u/ps5drv.c','''    RECT old_visible;
     UINT i, index;
@@ -1624,11 +1642,17 @@ revise('dlls/win32u/ps5drv.c','''    RECT old_visible;
     RECT monitor = get_primary_monitor_rect( (struct ratio){0} );
 
     screen_lock_enter();
+    if (memcmp( &monitor, &monitor_rect, sizeof(monitor) ))  /* PoP D.6: traces, the mode a game set */
+        fprintf( stderr, "PWSINK monitor %d,%d-%d,%d (was %d,%d-%d,%d) tid=%04x dpi_ctx=%#x\\n", (int)monitor.left,
+                 (int)monitor.top, (int)monitor.right, (int)monitor.bottom, (int)monitor_rect.left, (int)monitor_rect.top,
+                 (int)monitor_rect.right, (int)monitor_rect.bottom, (int)GetCurrentThreadId(),
+                 (unsigned int)get_thread_dpi_awareness_context() );
     monitor_rect = monitor;
     if (!(window = find_window( hwnd )) && shown''','Keep the monitor rect (W248).')
 revise('dlls/win32u/ps5drv.c','''        static UINT area_width, area_height;
 ''','''        static UINT area_width, area_height;
         INT full = -1;  /* W248: the window shown full screen */
+        BOOL mode_full = FALSE;  /* PoP D.6: found at the mode a game set */
 ''','The full screen window (W248).')
 revise('dlls/win32u/ps5drv.c','''        if (background)
             layers[count++] = (struct ps5_layer){background, 0, 0, screen_width, screen_height, screen_width,
@@ -1652,10 +1676,43 @@ revise('dlls/win32u/ps5drv.c','''        if (background)
                 }
                 if (!window->topmost) break;
             }
+        /* PoP D.6: the highest shown window exactly at the mode a game set below the desktop size (0,0 to that
+         * size) is full screen too, at that mode: the monitor rect kept the desktop's size, and other windows
+         * (a launcher's, a dialog) above it are left out as the taskbar is */
+        {
+            extern UINT pw_mode_set_width, pw_mode_set_height;
+
+            if (!fit && full < 0 && pw_mode_set_width && pw_mode_set_height &&
+                (pw_mode_set_width < screen_width || pw_mode_set_height < screen_height))
+                for (i = window_count; i-- > 0;)
+                {
+                    const struct ps5_window *window = &windows[i];
+
+                    /* topmost ones too (d23 on hardware: Prince of Persia's window under DXVK is topmost) */
+                    if (!window->shown) continue;
+                    /* covering the mode, with at most a frame's worth more (d21 on hardware: an exact match missed) */
+                    if (window->visible.left <= 0 && window->visible.top <= 0 &&
+                        window->visible.right >= (INT)pw_mode_set_width && window->visible.bottom >= (INT)pw_mode_set_height &&
+                        window->visible.right <= (INT)pw_mode_set_width + 64 &&
+                        window->visible.bottom <= (INT)pw_mode_set_height + 64)
+                    {
+                        full = i;
+                        mode_full = TRUE;
+                        break;
+                    }
+                }
+        }
         if (full >= 0)
         {
             view_width = min( (UINT)monitor_rect.right, screen_width );
             view_height = min( (UINT)monitor_rect.bottom, screen_height );
+        }
+        if (mode_full)  /* PoP D.6 */
+        {
+            extern UINT pw_mode_set_width, pw_mode_set_height;
+
+            view_width = pw_mode_set_width;
+            view_height = pw_mode_set_height;
         }
         if (!fit)
         {
@@ -1670,7 +1727,21 @@ revise('dlls/win32u/ps5drv.c','''        if (background)
 
                 if (now) fprintf( stderr, "PWSINK fullscreen on hwnd=%p %ux%u of %ux%u pointer=%d\\n", now, view_width,
                                   view_height, screen_width, screen_height, bounded );
-                else fprintf( stderr, "PWSINK fullscreen off hwnd=%p pointer=%d\\n", shown_full, bounded );
+                else
+                {
+                    fprintf( stderr, "PWSINK fullscreen off hwnd=%p pointer=%d\\n", shown_full, bounded );
+                    UINT traced = 0;
+
+                    for (i = window_count; i-- > 0 && traced < 4;)  /* PoP D.6: traces, why the window does not cover the monitor */
+                    {
+                        if (!windows[i].shown || windows[i].topmost) continue;
+                        traced++;
+                        fprintf( stderr, "PWSINK fullscreen not: hwnd=%p visible %d,%d-%d,%d monitor %d,%d-%d,%d\\n",
+                                 windows[i].hwnd, (int)windows[i].visible.left, (int)windows[i].visible.top,
+                                 (int)windows[i].visible.right, (int)windows[i].visible.bottom, (int)monitor_rect.left,
+                                 (int)monitor_rect.top, (int)monitor_rect.right, (int)monitor_rect.bottom );
+                    }
+                }
                 shown_full = now;
                 shown_width = view_width;
                 shown_height = view_height;
@@ -1689,6 +1760,16 @@ revise('dlls/win32u/sysparams.c','''    if (is_virtual_desktop() || emulate_mode
     else ret = user_driver->pChangeDisplaySettings( displays, primary_name, hwnd, flags, lparam );
     ERR( "PWSINK mode set %ux%u flags=%#x tid=%04x result=%d\\n", (UINT)displays->dmPelsWidth,
          (UINT)displays->dmPelsHeight, (UINT)flags, (UINT)GetCurrentThreadId(), (int)ret );  /* W248 */
+    if (ret == DISP_CHANGE_SUCCESSFUL)
+    {
+        /* PoP D.6 (Prince of Persia's 800x600 stayed in the corner: the monitor rect the driver reads kept the
+         * desktop's 1280x720, and its launcher's window, another process's, lay above the game): the mode
+         * itself, for ps5drv's full screen window */
+        extern UINT pw_mode_set_width, pw_mode_set_height;
+
+        pw_mode_set_width = displays->dmPelsWidth;
+        pw_mode_set_height = displays->dmPelsHeight;
+    }
 ''','Log display mode changes (W248).')
 # W251 (W249: SuperMarioKart's 64 MiB placed map found no flexible memory next to explorer): the placed range is
 # a reservation until RADV maps its alias there; then it is read/write.

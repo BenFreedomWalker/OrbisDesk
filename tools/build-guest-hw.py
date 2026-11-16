@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Build the hardware variants of ntdll.dll and kernelbase.dll (PE64) that run guest programs.
 
-W052, multitasking experiment. A PS4 title cannot start a second process, so a 64-bit
-GUI program started from the desktop runs as a guest inside this process:
+W052, multitasking experiment. The current Wine desktop backend runs a 64-bit
+GUI program as a guest inside this process; the external native-process probes
+are not yet a Wine process backend:
 kernelbase's CreateProcessInternalW loads the EXE as a module (ntdll relocates it and
 resolves its imports, which the loader otherwise does only for DLLs) and starts its
 entry point on a new thread. The guest's threads carry a pointer to it in
@@ -84,6 +85,8 @@ static inline struct ps4_guest *ps4_guest_or_loading(void)
 /* W206: kernelbase process.c; CreateFileW and CloseHandle of a guest thread */
 void ps4_guest_file_opened( HANDLE handle, void *caller );
 void ps4_guest_file_closing( HANDLE handle );
+/* PoP D.6: kernelbase process.c; CreateMutexA/W and CreateEventA/W of a guest thread */
+void ps4_guest_object_made( HANDLE handle, void *caller );
 /* W208: kernelbase process.c; VirtualAlloc and VirtualFree of a guest thread */
 void ps4_guest_memory_reserved( void *base, void *caller );
 void ps4_guest_memory_released( void *base );
@@ -91,6 +94,8 @@ void ps4_guest_memory_released( void *base );
 void ps4_guest_code_writable( HANDLE process, void *addr, SIZE_T size, DWORD prot );
 '''
 (overlay/'kernelbase').mkdir(parents=True,exist_ok=True);(overlay/'kernelbase/ps4_guest.h').write_text(GUEST_H)
+for header in ('pw_execution_mode.h','pw_execution_policy.h'):
+    shutil.copyfile(ROOT/'platform/ps4'/header,overlay/'kernelbase'/header)
 
 # ntdll: relocate and resolve imports of a guest EXE; a guest's exit ends the guest only.
 revise('ntdll','loader','''    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_DLL) &&
@@ -180,7 +185,7 @@ revise('ntdll','loader','''static void free_modref( WINE_MODREF *wm )
 # programs had no console. A guest's threads get argc/argv/wargv built from the guest's
 # command line (GetCommandLineW answers for the guest), once per guest.
 revise('ucrtbase','data','#include "msvcrt.h"\n','#include "msvcrt.h"\n#include <winternl.h>\n','TEB access.','dlls/msvcrt/data.c')
-revise('ucrtbase','data','''int* CDECL __p___argc(void) { return &MSVCRT___argc; }''','''/* PS4 hardware build (W057): the arguments of a guest program (kernelbase ps4_guest),
+GUEST_ARGS_C='''/* PS4 hardware build (W057): the arguments of a guest program (kernelbase ps4_guest),
  * whose threads carry it in TEB.UserReserved */
 static struct { void *guest; int argc; wchar_t **wargv; char **argv; } guest_args[32];
 static RTL_SRWLOCK guest_args_lock = RTL_SRWLOCK_INIT;
@@ -206,14 +211,34 @@ static int guest_slot(void)
     return slot;
 }
 
-int* CDECL __p___argc(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___argc : &guest_args[slot].argc; }''',
-       "A guest's argc.",'dlls/msvcrt/data.c')
+int* CDECL __p___argc(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___argc : &guest_args[slot].argc; }'''
+revise('ucrtbase','data','''int* CDECL __p___argc(void) { return &MSVCRT___argc; }''',GUEST_ARGS_C,"A guest's argc.",'dlls/msvcrt/data.c')
 revise('ucrtbase','data','''char*** CDECL __p___argv(void) { return &MSVCRT___argv; }''',
        '''char*** CDECL __p___argv(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___argv : &guest_args[slot].argv; }''',
        "A guest's argv.",'dlls/msvcrt/data.c')
 revise('ucrtbase','data','''wchar_t*** CDECL __p___wargv(void) { return &MSVCRT___wargv; }''',
        '''wchar_t*** CDECL __p___wargv(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___wargv : &guest_args[slot].wargv; }''',
        "A guest's wargv.",'dlls/msvcrt/data.c')
+# PoP D.4 (run-0061: separate_game.exe, a mingw program a separate process started in the title, had argc 1 although
+# Explorer passed its argument): msvcrt.dll's __getmainargs and __wgetmainargs answered with the process's own
+# arguments, the title's. msvcrt gets ucrtbase's per-guest arguments (W057) in both views; a guest's arguments
+# are not wildcard-expanded.
+revise('msvcrt','data','#include "msvcrt.h"\n','#include "msvcrt.h"\n#include <winternl.h>\n','TEB access.')
+revise('msvcrt','data','''int* CDECL __p___argc(void) { return &MSVCRT___argc; }''',GUEST_ARGS_C,"A guest's argc (msvcrt).")
+revise('msvcrt','data','''char*** CDECL __p___argv(void) { return &MSVCRT___argv; }''',
+       '''char*** CDECL __p___argv(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___argv : &guest_args[slot].argv; }''',
+       "A guest's argv (msvcrt).")
+revise('msvcrt','data','''wchar_t*** CDECL __p___wargv(void) { return &MSVCRT___wargv; }''',
+       '''wchar_t*** CDECL __p___wargv(void) { int slot = guest_slot(); return slot < 0 ? &MSVCRT___wargv : &guest_args[slot].wargv; }''',
+       "A guest's wargv (msvcrt).")
+for _kind in ('wargv', 'argv'):
+    revise('msvcrt','data','''    *argc = MSVCRT___argc;
+    *%s = MSVCRT___%s;''' % (_kind, _kind),'''    *argc = MSVCRT___argc;
+    *%s = MSVCRT___%s;
+    {
+        int slot = guest_slot();  /* PoP D.4: a guest's own arguments */
+        if (slot >= 0) { *argc = guest_args[slot].argc; *%s = guest_args[slot].%s; }
+    }''' % (_kind, _kind, _kind, _kind),"__%sgetmainargs answers with a guest's arguments (PoP D.4)." % ('w' if _kind == 'wargv' else ''))
 
 # kernelbase: the guest's own answers.
 revise('kernelbase','loader','#include "kernelbase.h"','#include "kernelbase.h"\n#include "ps4_guest.h"','Guest state.')
@@ -720,20 +745,7 @@ static DWORD WINAPI ps4_guest_start( void *param )
 }
 
 #include "winreg.h"
-/* W183 (phase 9): a 64-bit program the AppDefaults mark to run alone
- * (HKCU\\Software\\Wine\\AppDefaults\\<exe> "OrbisRunsAlone"="Y") is not a guest: it gets the title
- * to itself, as a 32-bit program does. W182: Pale Moon's mozglue.dll, xul.dll and nss3.dll have
- * the names of Wine Gecko's; in one process the second program bound to the first's and aborted. */
-static BOOL ps4_runs_alone( const WCHAR *name )
-{
-    WCHAR key[MAX_PATH + 40], value[4];
-    DWORD size = sizeof(value);
-
-    if (wcslen( name ) > MAX_PATH) return FALSE;
-    swprintf( key, ARRAY_SIZE(key), L"Software\\\\Wine\\\\AppDefaults\\\\%s", name );
-    return !RegGetValueW( HKEY_CURRENT_USER, key, L"OrbisRunsAlone", RRF_RT_REG_SZ, NULL, value, &size ) &&
-           (value[0] == 'Y' || value[0] == 'y');
-}
+#include "pw_execution_policy.h"
 
 static BOOL ps4_guest_launch( const WCHAR *app_name, const WCHAR *cmd_line, DWORD flags, PROCESS_INFORMATION *info )
 {
@@ -756,7 +768,7 @@ static BOOL ps4_guest_launch( const WCHAR *app_name, const WCHAR *cmd_line, DWOR
         const WCHAR *base = wcsrchr( app_name, '\\\\' );
         if (!wcsicmp( base ? base + 1 : app_name, L"wineboot.exe" )) return FALSE;
         /* W183: it relaunches the title instead (CreateProcessInternalW, below) */
-        if (ps4_runs_alone( base ? base + 1 : app_name ))
+        if (ps4_runs_alone( app_name ))
         {
             ERR( "PWGUEST runs_alone app=%s\\n", debugstr_w(app_name) );
             return FALSE;
@@ -986,12 +998,110 @@ revise('kernelbase','process','''    info->hThread = info->hProcess = 0;
 ''','''    info->hThread = info->hProcess = 0;
     info->dwProcessId = info->dwThreadId = 0;
 
+    if (ps4_execution_mode( app_name ) == PW_EXEC_SEPARATE ||
+        (ps4_separate_thread && ps4_separate_thread == GetCurrentThreadId()))
+    {
+        /* PoP Phase D.3: the program runs in a separate native process. The title's watcher
+         * (native/pop_loader_spawn.h) starts it through the GoldHEN loader and it runs the image under Wine
+         * as a client of this wineserver (native/process_p014_child.c, native/pop_wine_child.c). The request
+         * carries a token, the image, the command line and the current directory; the new process writes its
+         * Windows process and thread ids under that token, and the caller gets real handles to it, as from
+         * CreateProcess: it can wait for it and read its exit code. */
+        static const WCHAR request_name[] = L"Z:\\\\orbisdesk\\\\process-p014\\\\spawn-request";
+        WCHAR dir[MAX_PATH], started[96];
+        char text[4096];
+        DWORD token = (GetTickCount() ^ (GetCurrentThreadId() << 16)) | 1, wrote = 0, got = 0, pid = 0, tid = 0, i;
+        int n = 0, tries, len;
+        HANDLE file;
+
+        if (cur_dir) lstrcpynW( dir, cur_dir, MAX_PATH );
+        else GetCurrentDirectoryW( MAX_PATH, dir );
+        {   /* token, as decimal text */
+            char digits[12]; int d = 0; DWORD v = token;
+            do { digits[d++] = '0' + v % 10; v /= 10; } while (v);
+            while (d) text[n++] = digits[--d];
+            text[n++] = '\\n';
+        }
+        len = WideCharToMultiByte( CP_UTF8, 0, app_name, -1, text + n, sizeof(text) - n - 4, NULL, NULL );
+        n += len > 0 ? len - 1 : 0; text[n++] = '\\n';
+        len = WideCharToMultiByte( CP_UTF8, 0, tidy_cmdline ? tidy_cmdline : app_name, -1, text + n, sizeof(text) - n - 4, NULL, NULL );
+        n += len > 0 ? len - 1 : 0; text[n++] = '\\n';
+        len = WideCharToMultiByte( CP_UTF8, 0, dir, -1, text + n, sizeof(text) - n - 2, NULL, NULL );
+        n += len > 0 ? len - 1 : 0; text[n++] = '\\n';
+
+        file = CreateFileW( request_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            ERR( "PWSEP separate_request_failed image=%s error=%lu\\n", debugstr_w(app_name), GetLastError() );
+            status = STATUS_UNSUCCESSFUL;
+            goto done;
+        }
+        WriteFile( file, text, n, &wrote, NULL );
+        CloseHandle( file );
+        ERR( "PWSEP separate_request image=%s token=%lu cmdline=%s dir=%s\\n", debugstr_w(app_name), token,
+             debugstr_w(tidy_cmdline), debugstr_w(dir) );
+
+        /* the new process reports "pid tid" in started-<token> once it has joined this server */
+        lstrcpyW( started, L"Z:\\\\orbisdesk\\\\process-p014\\\\started-" );
+        {
+            WCHAR digits[12]; int d = 0, s = lstrlenW( started ); DWORD v = token;
+            do { digits[d++] = '0' + v % 10; v /= 10; } while (v);
+            while (d) started[s++] = digits[--d];
+            started[s] = 0;
+        }
+        for (tries = 0; tries < 300; tries++)   /* 30 s: the loader spawn and Wine's start take a few */
+        {
+            /* PoP D.7: the title reports a start that failed (no resident loader even after sending it) */
+            {
+                WCHAR failed[96];
+                lstrcpyW( failed, L"Z:\\\\orbisdesk\\\\process-p014\\\\failed-" );
+                lstrcatW( failed, started + 34 );   /* the token digits after "started-" */
+                if (GetFileAttributesW( failed ) != INVALID_FILE_ATTRIBUTES)
+                {
+                    ERR( "PWSEP separate_failed_reported image=%s token=%lu\\n", debugstr_w(app_name), token );
+                    DeleteFileW( failed );
+                    break;
+                }
+            }
+            file = CreateFileW( started, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+            if (file != INVALID_HANDLE_VALUE)
+            {
+                got = 0; ReadFile( file, text, sizeof(text) - 1, &got, NULL ); CloseHandle( file );
+                text[got] = 0;
+                if (got && text[got - 1] == '\\n') break;   /* complete line */
+            }
+            Sleep( 100 );
+        }
+        for (i = 0, pid = 0; i < got && text[i] >= '0' && text[i] <= '9'; i++) pid = pid * 10 + (text[i] - '0');
+        for (i++, tid = 0; i < got && text[i] >= '0' && text[i] <= '9'; i++) tid = tid * 10 + (text[i] - '0');
+        DeleteFileW( started );
+        if (!pid)
+        {
+            ERR( "PWSEP separate_start_timeout image=%s token=%lu\\n", debugstr_w(app_name), token );
+            status = STATUS_UNSUCCESSFUL;
+            goto done;
+        }
+        info->hProcess = OpenProcess( PROCESS_ALL_ACCESS, inherit, pid );
+        info->hThread = tid ? OpenThread( THREAD_ALL_ACCESS, inherit, tid ) : 0;
+        info->dwProcessId = pid;
+        info->dwThreadId = tid;
+        ERR( "PWSEP separate_started image=%s token=%lu pid=%04lx tid=%04lx process=%p thread=%p\\n",
+             debugstr_w(app_name), token, pid, tid, info->hProcess, info->hThread );
+        status = info->hProcess ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+        goto done;
+    }
     if (ps4_guest_launch( app_name, tidy_cmdline, flags, info ))
     {
         status = STATUS_SUCCESS;
         goto done;
     }
 #ifndef _WIN64
+    if (ps4_execution_mode( app_name ) == PW_EXEC_GUEST)
+    {
+        status = STATUS_NOT_SUPPORTED;
+        goto done;
+    }
     /* W235 (P6): this i386 kernelbase loads only in explorer's 32-bit world (wine/lib/wine/i386-guest,
      * tools/build-wow64-world-ps4.py). A program that is not a guest here goes back to explorer's
      * 64-bit side (ps4_world_launch), which offers the relaunch: nothing relaunches from a 32-bit thread */
@@ -1038,6 +1148,147 @@ revise('kernelbase','process','''    info->hThread = info->hProcess = 0;
         ERR( "PWWOW guest32 base_taken relaunch image=%s cmd=%s dir=%s\\n", debugstr_w(app_name),
              debugstr_w(tidy_cmdline), debugstr_w(cur_dir) );
         SetLastError( saved );
+        /* PoP D.7 (hardware 2026-11-13: Vampire - Bloodlines' vampire.exe, the game itself, starts a "CleanUp
+         * Application" from %TEMP% at its own base 0x400000; D.6 moved the game to a separate process, where Direct3D
+         * has no GPU). The games that launchers start import a graphics library (POP.EXE d3d9, Worms3D.exe d3d8,
+         * d3d9 and opengl32); a started program that imports none runs in a separate process itself, and the
+         * starter keeps the base and the GPU here. A file that cannot be read keeps D.6. */
+        {
+            static const char *const graphics[] = {"d3d8.dll", "d3d9.dll", "d3d10.dll", "d3d10_1.dll", "d3d11.dll",
+                                                   "d3d12.dll", "dxgi.dll", "ddraw.dll", "opengl32.dll", "d3dim.dll",
+                                                   "d3drm.dll", "glu32.dll"};
+            HANDLE file = CreateFileW( app_name, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                       NULL, OPEN_EXISTING, 0, NULL );
+            BOOL parsed = FALSE, draws = FALSE;
+            DWORD read;
+
+            if (file != INVALID_HANDLE_VALUE)
+            {
+                IMAGE_DOS_HEADER dos;
+                IMAGE_NT_HEADERS32 nt;
+                IMAGE_SECTION_HEADER sections[96];
+                IMAGE_IMPORT_DESCRIPTOR desc;
+                DWORD rva, offset = 0, count = 0, i, j, k;
+
+                if (ReadFile( file, &dos, sizeof(dos), &read, NULL ) && read == sizeof(dos) &&
+                    dos.e_magic == IMAGE_DOS_SIGNATURE &&
+                    SetFilePointer( file, dos.e_lfanew, NULL, FILE_BEGIN ) != INVALID_SET_FILE_POINTER &&
+                    ReadFile( file, &nt, sizeof(nt), &read, NULL ) && read == sizeof(nt) &&
+                    nt.Signature == IMAGE_NT_SIGNATURE && nt.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC &&
+                    nt.FileHeader.NumberOfSections <= ARRAY_SIZE(sections) &&
+                    SetFilePointer( file, dos.e_lfanew + FIELD_OFFSET( IMAGE_NT_HEADERS32, OptionalHeader ) +
+                                    nt.FileHeader.SizeOfOptionalHeader, NULL, FILE_BEGIN ) != INVALID_SET_FILE_POINTER &&
+                    ReadFile( file, sections, nt.FileHeader.NumberOfSections * sizeof(sections[0]), &read, NULL ) &&
+                    read == nt.FileHeader.NumberOfSections * sizeof(sections[0]))
+                {
+                    count = nt.FileHeader.NumberOfSections;
+                    rva = nt.OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_IMPORT ?
+                          nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress : 0;
+                    parsed = TRUE;   /* no import table: imports nothing */
+                    for (i = 0; rva && i < count; i++)
+                        if (rva >= sections[i].VirtualAddress &&
+                            rva < sections[i].VirtualAddress + max( sections[i].Misc.VirtualSize, sections[i].SizeOfRawData ))
+                            offset = rva - sections[i].VirtualAddress + sections[i].PointerToRawData;
+                    if (rva && !offset) parsed = FALSE;
+                    for (j = 0; offset && j < 256 && !draws; j++)
+                    {
+                        char name[32];
+                        DWORD name_offset = 0;
+
+                        if (SetFilePointer( file, offset + j * sizeof(desc), NULL, FILE_BEGIN ) == INVALID_SET_FILE_POINTER ||
+                            !ReadFile( file, &desc, sizeof(desc), &read, NULL ) || read != sizeof(desc))
+                        {
+                            parsed = FALSE;
+                            break;
+                        }
+                        if (!desc.Name) break;
+                        for (i = 0; i < count; i++)
+                            if (desc.Name >= sections[i].VirtualAddress &&
+                                desc.Name < sections[i].VirtualAddress + max( sections[i].Misc.VirtualSize, sections[i].SizeOfRawData ))
+                                name_offset = desc.Name - sections[i].VirtualAddress + sections[i].PointerToRawData;
+                        if (!name_offset || SetFilePointer( file, name_offset, NULL, FILE_BEGIN ) == INVALID_SET_FILE_POINTER ||
+                            !ReadFile( file, name, sizeof(name) - 1, &read, NULL ))
+                        {
+                            parsed = FALSE;
+                            break;
+                        }
+                        name[min( read, sizeof(name) - 1 )] = 0;
+                        for (k = 0; k < ARRAY_SIZE(graphics); k++)
+                            if (!lstrcmpiA( name, graphics[k] )) draws = TRUE;
+                    }
+                }
+                CloseHandle( file );
+            }
+            ERR( "PWSEP base_taken started=%s parsed=%d draws=%d\\n", debugstr_w(app_name), parsed, draws );
+            if (parsed && !draws && ps4_execution_mode( app_name ) == PW_EXEC_AUTO)
+            {
+                BOOL started;
+
+                ps4_separate_thread = GetCurrentThreadId();
+                started = CreateProcessW( app_name, tidy_cmdline, NULL, NULL, inherit, flags, env, cur_dir,
+                                          (STARTUPINFOW *)startup_info, info );
+                ps4_separate_thread = 0;
+                ERR( "PWSEP base_taken helper_to_separate=%d error=%lu image=%s\\n", started, started ? 0 : GetLastError(),
+                     debugstr_w(app_name) );
+                if (started)
+                {
+                    ps4_base_taken = FALSE;
+                    status = STATUS_SUCCESS;
+                    goto done;
+                }
+                SetLastError( saved );
+            }
+        }
+        /* PoP D.6 (Worms 3D's and Prince of Persia's launchers, user feedback 2026-11-13): before the relaunch
+         * prompt, the starter that holds the base moves to a separate process (docs/POP_SEPARATE_PROCESS.md); started
+         * there, it hands its program to this title (D.4, D.5), where the base is then free. The choice is kept in
+         * AppDefaults, as winecfg's "Procesos separados" writes it, and the starter here ends: the separate one opens
+         * its window again. Only for a starter with no execution mode chosen; when the separate start fails, the
+         * value is removed and the prompt follows. */
+        {
+            struct ps4_guest *starter = ps4_guest_current();
+            LDR_DATA_TABLE_ENTRY *mod;
+            WCHAR starter_path[MAX_PATH], starter_dir[MAX_PATH], starter_cmd[MAX_PATH + 2], key[MAX_PATH + 64];
+            WCHAR *starter_base;
+            STARTUPINFOW si = {sizeof(si)};
+            PROCESS_INFORMATION pi;
+            HKEY hkey;
+
+            starter_path[0] = 0;
+            if (starter && starter->module && !LdrFindEntryForAddress( starter->module, &mod ) && mod->FullDllName.Buffer &&
+                mod->FullDllName.Length / sizeof(WCHAR) < MAX_PATH)
+            {
+                memcpy( starter_path, mod->FullDllName.Buffer, mod->FullDllName.Length );
+                starter_path[mod->FullDllName.Length / sizeof(WCHAR)] = 0;
+            }
+            starter_base = starter_path[0] ? wcsrchr( starter_path, '\\\\' ) : NULL;
+            if (starter_base && ps4_execution_mode( starter_path ) == PW_EXEC_AUTO &&
+                (size_t)(starter_base - starter_path) < MAX_PATH)
+            {
+                memcpy( starter_dir, starter_path, (starter_base - starter_path) * sizeof(WCHAR) );
+                starter_dir[starter_base - starter_path] = 0;
+                swprintf( key, ARRAY_SIZE(key), L"Software\\\\Wine\\\\AppDefaults\\\\%ls", starter_base + 1 );
+                swprintf( starter_cmd, ARRAY_SIZE(starter_cmd), L"\\"%ls\\"", starter_path );
+                if (!RegCreateKeyExW( HKEY_CURRENT_USER, key, 0, NULL, 0, KEY_SET_VALUE, NULL, &hkey, NULL ))
+                {
+                    BOOL moved;
+
+                    RegSetValueExW( hkey, L"OrbisExecutionMode", 0, REG_SZ, (const BYTE *)L"separate", sizeof(L"separate") );
+                    moved = CreateProcessW( starter_path, starter_cmd, NULL, NULL, FALSE, 0, NULL, starter_dir, &si, &pi );
+                    ERR( "PWSEP base_taken starter=%s to_separate=%d error=%lu image=%s\\n", debugstr_w(starter_path), moved,
+                         moved ? 0 : GetLastError(), debugstr_w(app_name) );
+                    if (!moved) RegDeleteValueW( hkey, L"OrbisExecutionMode" );
+                    RegCloseKey( hkey );
+                    if (moved)
+                    {
+                        CloseHandle( pi.hThread );
+                        CloseHandle( pi.hProcess );
+                        RtlExitUserProcess( 0 );   /* this guest alone ends (W196), as ExitProcess */
+                    }
+                    SetLastError( saved );
+                }
+            }
+        }
     }
     else
     {
@@ -1077,13 +1328,13 @@ revise('kernelbase','process','''    info->hThread = info->hProcess = 0;
                 CloseHandle( file );
             }
             /* W183: a 64-bit program marked to run alone (ps4_runs_alone) takes the same path */
-            if (!pe32 && ps4_runs_alone( name )) alone = TRUE;
+            if (!pe32 && ps4_runs_alone( app_name )) alone = TRUE;
         }
 #ifdef _WIN64
         /* W235 (pe32-en-explorer-plan.md P7): a PE32 runs as a guest of explorer's 32-bit world. The
          * relaunch stays for programs marked to run alone (OrbisRunsAlone), for every PE32 while
          * C:\\\\orbis\\\\pe32relaunch.txt exists, and when the world fails (the dialog says why) */
-        if (pe32 && !ps4_runs_alone( name ) && !ps4_pe32_relaunch_forced())
+        if (pe32 && !ps4_runs_alone( app_name ) && !ps4_pe32_relaunch_forced())
         {
             DWORD error = ps4_world_launch( app_name, tidy_cmdline, cur_dir, flags, info );
 
@@ -1106,6 +1357,12 @@ revise('kernelbase','process','''    info->hThread = info->hProcess = 0;
                       L"Para abrirlo, OrbisDesk se reinicia y lo ejecuta solo, con los mismos argumentos; al cerrarlo "
                       L"vuelve al escritorio. Se cerrarán los programas abiertos. ¿Continuar?" );
 #endif
+        if (ps4_execution_mode( app_name ) == PW_EXEC_GUEST)
+        {
+            ERR( "PWOPEN desktop_mode_no_relaunch image=%s\\n", debugstr_w(app_name) );
+            status = STATUS_NOT_SUPPORTED;
+            goto done;
+        }
         if (pe32 || alone)
         {
             int (WINAPI *message_box)( HWND, const WCHAR *, const WCHAR *, UINT ) =
@@ -1179,6 +1436,7 @@ revise('kernelbase','process','''    USHORT machine = 0;
     WCHAR ps4_image[MAX_PATH], ps4_dir[MAX_PATH];  /* W262: a program whose base another guest holds */
     BOOL ps4_base_taken = FALSE;
 #endif
+    static DWORD ps4_separate_thread;  /* PoP D.7: this thread's next start runs in a separate process */
 
     /* Process the AppName and/or CmdLine to get module name and path */''','The i386 relaunch of a program whose base is taken (W262).')
 
@@ -1233,6 +1491,15 @@ revise('ucrtbase','exit','''  register_onexit_function(&MSVCRT_atexit_table, fun
 # W206 (W205: Pale Moon's profile lock stayed open after it ended, and the next start quit): the
 # files a guest opened from its own code are closed when it exits, as the end of its process would.
 revise('kernelbase','file','#include "kernelbase.h"','#include "kernelbase.h"\n#include "ps4_guest.h"','Guest state.')
+# PoP D.6: a guest's named mutexes and events, closed when it exits (ps4_guest_close_files)
+revise('kernelbase','sync','#include "kernelbase.h"','#include "kernelbase.h"\n#include "ps4_guest.h"','Guest state.')
+for name, inner, args in (('CreateEventA', 'CreateEventExA', 'sa, name, flags, EVENT_ALL_ACCESS'),
+                          ('CreateEventW', 'CreateEventExW', 'sa, name, flags, EVENT_ALL_ACCESS'),
+                          ('CreateMutexA', 'CreateMutexExA', 'sa, name, owner ? CREATE_MUTEX_INITIAL_OWNER : 0, MUTEX_ALL_ACCESS'),
+                          ('CreateMutexW', 'CreateMutexExW', 'sa, name, owner ? CREATE_MUTEX_INITIAL_OWNER : 0, MUTEX_ALL_ACCESS')):
+    revise('kernelbase','sync','    return %s( %s );\n}' % (inner, args),
+           '    HANDLE ret = %s( %s );\n\n    if (name && ps4_guest_current()) ps4_guest_object_made( ret, __builtin_return_address( 0 ) );  /* PoP D.6 */\n    return ret;\n}' % (inner, args),
+           'Record the named objects a guest makes (%s).' % name)
 revise('kernelbase','file','''    TRACE("returning %p\\n", ret);
     return ret;
 }''','''    /* W206: closed when the guest exits (ps4_guest_unload) */
@@ -1285,13 +1552,53 @@ static BOOL ps4_guest_file_index( HANDLE handle, LONGLONG *index )
     return TRUE;
 }
 
+/* PoP D.6 (Prince of Persia's launcher, ended here and started again in a separate process, found its
+ * POP_Launcher mutex still there and said the game was running): a guest's named mutexes and events are closed
+ * when it exits too. Known by the hash of their name; the bit 62 tells them from a file index. */
+#define PS4_GUEST_OBJECT_INDEX (1LL << 62)
+static BOOL ps4_guest_object_index( HANDLE handle, LONGLONG *index )
+{
+    char buffer[sizeof(OBJECT_NAME_INFORMATION) + MAX_PATH * sizeof(WCHAR)];
+    OBJECT_NAME_INFORMATION *info = (OBJECT_NAME_INFORMATION *)buffer;
+    ULONGLONG hash = 0xcbf29ce484222325ULL;
+    ULONG i, length;
+
+    if (NtQueryObject( handle, ObjectNameInformation, info, sizeof(buffer), NULL ) || !info->Name.Length) return FALSE;
+    for (i = 0, length = info->Name.Length / sizeof(WCHAR); i < length; i++)
+    {
+        hash ^= info->Name.Buffer[i];
+        hash *= 0x100000001b3ULL;
+    }
+    *index = (LONGLONG)(hash & (PS4_GUEST_OBJECT_INDEX - 1)) | PS4_GUEST_OBJECT_INDEX;
+    return TRUE;
+}
+
+static void ps4_guest_handle_add( struct ps4_guest *guest, HANDLE handle, LONGLONG index );
+
+void ps4_guest_object_made( HANDLE handle, void *caller )
+{
+    struct ps4_guest *guest = ps4_guest_current();
+    DWORD error = GetLastError();  /* ERROR_ALREADY_EXISTS stays for the caller */
+    LONGLONG index;
+
+    if (handle && guest && ps4_guest_own_code( caller ) && ps4_guest_object_index( handle, &index ))
+        ps4_guest_handle_add( guest, handle, index );
+    SetLastError( error );
+}
+
 void ps4_guest_file_opened( HANDLE handle, void *caller )
 {
     struct ps4_guest *guest = ps4_guest_current();
-    static BOOL full_reported;
     LONGLONG index;
 
     if (!guest || !ps4_guest_own_code( caller ) || !ps4_guest_file_index( handle, &index )) return;
+    ps4_guest_handle_add( guest, handle, index );
+}
+
+static void ps4_guest_handle_add( struct ps4_guest *guest, HANDLE handle, LONGLONG index )
+{
+    static BOOL full_reported;
+
     RtlEnterCriticalSection( &guest->lock );
     if (guest->file_count == guest->file_size)
     {
@@ -1342,7 +1649,10 @@ static void ps4_guest_close_files( struct ps4_guest *guest )
     RtlEnterCriticalSection( &guest->lock );
     for (i = 0; i < guest->file_count; i++)
     {
-        if (!ps4_guest_file_index( guest->files[i].handle, &index ) || index != guest->files[i].index ||
+        BOOL object = (guest->files[i].index & PS4_GUEST_OBJECT_INDEX) != 0;  /* PoP D.6 */
+
+        if (!(object ? ps4_guest_object_index( guest->files[i].handle, &index )
+                     : ps4_guest_file_index( guest->files[i].handle, &index )) || index != guest->files[i].index ||
             NtClose( guest->files[i].handle )) stale++;
         else closed++;
     }
@@ -4397,6 +4707,8 @@ def build(arch,work,out):
         shutil.copyfile(work/module/(module+'.dll'),out/(module+'.dll'))
         modules[module+'.dll']={'path':module+'.dll','sha256':sha(out/(module+'.dll')),'units':units,'commands':commands}
     manifest={'schema_version':1,'wine_commit':commit,'modules':modules,'revisions':revisions,
+              'input_sha256':{str((ROOT/'platform/ps4'/p.name).relative_to(ROOT)):sha(p) for p in
+                              (overlay/'kernelbase/pw_execution_mode.h',overlay/'kernelbase/pw_execution_policy.h')},
               'overlay_sha256':{str(p.relative_to(overlay)):sha(p) for p in sorted(overlay.rglob('*')) if p.is_file()}}
     if arch=='i386':manifest['builder_sha256']=sha(pathlib.Path(__file__))
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')

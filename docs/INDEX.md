@@ -221,6 +221,8 @@ Regenerate both languages: `python3 tools/build-doc-index.py`.
 
 - [CI.md](CI.md) — Running CI and measuring the platform matrix
 - [MANGOJUICE.md](MANGOJUICE.md) — MangoJuice: the MangoHud settings program
+- [POP_SEPARATE_PROCESS.md](POP_SEPARATE_PROCESS.md) — Separate Windows processes (PoP phases B–D)
+- [PROCESS_FAMILY_PROBES.md](PROCESS_FAMILY_PROBES.md) — Process-family probes for fixed-base launchers
 - [RELEASES.md](RELEASES.md) — Product builds, releases and the development branch
 - [RELEASE_LICENSES.md](RELEASE_LICENSES.md) — Release licenses (alpha-1)
 - [RELEASE_TRACES.md](RELEASE_TRACES.md) — Release traces: one switch for alpha-1
