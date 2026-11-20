@@ -224,6 +224,7 @@ Regenerar ambos idiomas: `python3 tools/build-doc-index.py`.
 - [DESKTOP_BACKGROUND-es.md](DESKTOP_BACKGROUND-es.md) — Diálogo de fondo de escritorio: tus propias imágenes como fondo (borrador)
 - [FPS_LIMIT-es.md](FPS_LIMIT-es.md) — Límite de FPS (por programa)
 - [FRAME_GENERATION-es.md](FRAME_GENERATION-es.md) — Generación de fotogramas (experimental)
+- [MANAGE_INSTALLATION-es.md](MANAGE_INSTALLATION-es.md) — Administrar la instalación
 - [MANGOJUICE-es.md](MANGOJUICE-es.md) — MangoJuice: el programa de ajustes de MangoHud
 - [OVERLAY_MENU-es.md](OVERLAY_MENU-es.md) — El menú del overlay con L3+R3 (04.31)
 - [POP_SEPARATE_PROCESS-es.md](POP_SEPARATE_PROCESS-es.md) — Procesos de Windows separados (fases B–D de PoP)
@@ -231,6 +232,7 @@ Regenerar ambos idiomas: `python3 tools/build-doc-index.py`.
 - [RELEASES-es.md](RELEASES-es.md) — Construcción del producto, releases y rama de desarrollo
 - [RELEASE_LICENSES-es.md](RELEASE_LICENSES-es.md) — Licencias del release (alpha-1)
 - [RELEASE_TRACES-es.md](RELEASE_TRACES-es.md) — Trazas en release: un solo interruptor para el alpha-1
+- [RUNTIME_SIZE-es.md](RUNTIME_SIZE-es.md) — Tamaño del runtime
 - [SEAMONKEY_DESCRIPTORS-es.md](SEAMONKEY_DESCRIPTORS-es.md) — SeaMonkey y los descriptores de archivo del título
 - [SEAMONKEY_FILE_LOCKS-es.md](SEAMONKEY_FILE_LOCKS-es.md) — SeaMonkey, SQLite y los bloqueos de rangos de bytes
 - [SEAMONKEY_FLEXIBLE_MEMORY-es.md](SEAMONKEY_FLEXIBLE_MEMORY-es.md) — SeaMonkey y la memoria flexible

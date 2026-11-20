@@ -224,6 +224,7 @@ Regenerate both languages: `python3 tools/build-doc-index.py`.
 - [DESKTOP_BACKGROUND.md](DESKTOP_BACKGROUND.md) — Desktop background dialog: your own pictures as wallpaper (draft)
 - [FPS_LIMIT.md](FPS_LIMIT.md) — FPS limit (per program)
 - [FRAME_GENERATION.md](FRAME_GENERATION.md) — Frame generation (experimental)
+- [MANAGE_INSTALLATION.md](MANAGE_INSTALLATION.md) — Manage installation
 - [MANGOJUICE.md](MANGOJUICE.md) — MangoJuice: the MangoHud settings program
 - [OVERLAY_MENU.md](OVERLAY_MENU.md) — The L3+R3 overlay menu (04.31)
 - [POP_SEPARATE_PROCESS.md](POP_SEPARATE_PROCESS.md) — Separate Windows processes (PoP phases B–D)
@@ -231,6 +232,7 @@ Regenerate both languages: `python3 tools/build-doc-index.py`.
 - [RELEASES.md](RELEASES.md) — Product builds, releases and the development branch
 - [RELEASE_LICENSES.md](RELEASE_LICENSES.md) — Release licenses (alpha-1)
 - [RELEASE_TRACES.md](RELEASE_TRACES.md) — Release traces: one switch for alpha-1
+- [RUNTIME_SIZE.md](RUNTIME_SIZE.md) — Runtime size
 - [SEAMONKEY_DESCRIPTORS.md](SEAMONKEY_DESCRIPTORS.md) — SeaMonkey and the title's file descriptors
 - [SEAMONKEY_FILE_LOCKS.md](SEAMONKEY_FILE_LOCKS.md) — SeaMonkey, SQLite and byte-range file locks
 - [SEAMONKEY_FLEXIBLE_MEMORY.md](SEAMONKEY_FLEXIBLE_MEMORY.md) — SeaMonkey and the flexible memory pool
