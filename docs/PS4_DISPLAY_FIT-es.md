@@ -50,7 +50,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 
 ## Comprobación de geometría en el host
 
-Ejecuta `python3 tests/test_display_fit_host.py` desde la raíz del repositorio. La prueba cubre salida 16:9 completa y con área segura, el objetivo 1360×768, centrado 4:3, dimensiones impares, redondeo del área segura, ESTIRAR, ratios no válidos/NaN y dimensiones no válidas. Verifica que el rectángulo de contenido permanezca dentro del área segura. Es una comprobación de geometría en el host; no compila el sink de PS4 ni valida VideoOut/GPU.
+Ejecuta `python3 tests/test_display_fit_host.py` desde la raíz del repositorio. La prueba cubre salida 16:9 completa y con área segura, salida 16:10, un modo pequeño de 320×200, el objetivo 1360×768, centrado 4:3, dimensiones impares, redondeo del área segura, ESTIRAR, ratios no válidos/NaN y dimensiones no válidas. Verifica que el rectángulo de contenido permanezca dentro del área segura. Es una comprobación de geometría en el host; no compila el sink de PS4 ni valida VideoOut/GPU.
 
 ## Pruebas físicas en PS4 — pendientes de acceso al hardware del usuario
 
