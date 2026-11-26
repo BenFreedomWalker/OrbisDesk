@@ -19,7 +19,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 ## Work completed in this investigation
 
 - [x] Re-read the current `dev` branch instructions and display sink implementation.
-- [x] Confirmed the current branch head before making changes: `f3b98b622abbeb6880b4c04c6b2363e705aac4c4`.
+- [x] Confirmed that the work is being carried out on the existing `dev` branch; the live branch head is intentionally not frozen in this checklist.
 - [x] Traced the fixed output dimensions through VideoOut registration, CPU scaling, cursor placement and overlay calls.
 - [x] Checked the OpenOrbis API declaration and status structure, and confirmed the boot link includes `-lSceVideoOut`.
 - [x] Added a startup query after `sceVideoOutOpen()`. Valid full-mode dimensions (320×200 through 4096×2160) now size the CPU or GPU VideoOut buffers; invalid/query-failure results retain the 1280×720 fallback. The log records both full and pane dimensions without treating pane dimensions as safe-area values.
