@@ -41,6 +41,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [ ] Keep the logical Wine desktop dimensions independent from the physical VideoOut buffer dimensions.
 - [x] Query the safe-area ratio at startup; if the module, symbol or value is invalid, use 1.0 and retain full-frame output.
 - [x] Apply the safe rectangle to CPU/GPU scaling, cursor, busy indicator, FPS, Steam, overlay and separate windows. ESTIRAR fills the safe area, not the full output.
+- [x] Clip the separate-process window compositor to the safe rectangle itself, not merely the full VideoOut bounds; the sink passes the same safe rectangle used by the desktop, cursor and overlays.
 - [ ] Verify the ABI and behavior on actual PS4 firmware; do not call the private `sceVideoOutSysSetOverscanRatio`.
 - [x] Keep aspect-preserving fit and per-program stretch behavior consistent, including letterboxing/pillarboxing, at the active output size.
 - [x] Audit and constrain cursor, busy indicator, FPS, Steam UI, overlay and separate windows to the safe rectangle; physical pointer mapping validation remains pending.
