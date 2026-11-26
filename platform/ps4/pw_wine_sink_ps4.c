@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Presentation sink of the in-process Wine user driver (win32u ps5drv.c).
- * Each composed desktop frame is scaled into one of two 1280x720 linear
- * sceVideoOut buffers and flipped. Each frame whose content changed is also written to
+ * Each composed desktop frame is scaled into one of two linear sceVideoOut
+ * buffers sized for the active VideoOut mode and flipped. Each frame whose content changed is also written to
  * /data/frames as a BMP file (up to 24) and frame hashes are logged, so a run leaves
  * evidence that can be compared outside the emulator. There is no input
  * source yet: pw_wine_next_input reports no events.
