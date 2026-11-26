@@ -12,7 +12,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] The original sink hardcoded `OUT_WIDTH=1280`, `OUT_HEIGHT=720`, and two output buffers; the sink now queries the active VideoOut mode and sizes its output buffers from the reported `width`/`height`.
 - [x] `open_video()` now allocates/registers VideoOut buffers using the queried active mode. The CPU fallback clears and addresses the output using the runtime width, height and pitch.
 - [x] `show()` scales the desktop into the runtime output rectangle, centers it, and optionally stretches it to the full rectangle when the per-program ESTIRAR setting is enabled.
-- [x] Cursor placement, busy indicator, Steam UI, overlay and separate-window composition are passed the same runtime output geometry.
+- [x] Cursor placement, busy indicator, FPS, Steam UI, overlay and separate windows respect the same visible output rectangle.
 - [x] The GPU sink accepts runtime width and height in `pw_sink_gpu_buffers()` and creates its images, framebuffers, render area and viewport from those dimensions.
 - [x] The OpenOrbis declaration uses `int32_t sceVideoOutGetResolutionStatus(int32_t, OrbisVideoOutResolutionStatus *)`; the status exposes `width`, `height`, `paneWidth` and `paneHeight`. The project's boot linker already links `-lSceVideoOut`. The exact pinned SDK import and target-runtime call still require a build and PS4 run.
 
@@ -26,7 +26,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Did not substitute the monitor's 1360×768 panel size by guess; the active VideoOut mode is queried from the console instead.
 - [x] Corrected escaped newline sequences in the VideoOut startup diagnostics so each message is emitted on its own log line.
 - [x] Investigated the available margin/overscan symbols: `sceVideoOutSetWindowModeMargins` is not a documented general full-screen overscan control, and `sceVideoOutSysSetOverscanRatio` is a private interface with no usable signature in the public SDK.
-- [x] Found a more appropriate public API: `sceSystemServiceGetDisplaySafeAreaInfo` returns the PS4-configured safe-area ratio. OpenOrbis declares the symbol but leaves its signature incomplete; ABI and `libSceSystemService` link availability still need verification.
+- [x] Confirmed `sceSystemServiceGetDisplaySafeAreaInfo` returns a `float` safe-area ratio (documented platform contract in GameMaker). Since OpenOrbis leaves the return type unspecified, the sink loads `libSceSystemService.sprx` and resolves the symbol with `sceKernelDlsym`, avoiding a static link dependency.
 
 ## Implementation checklist
 
@@ -38,9 +38,11 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Size direct-memory allocation, buffer attributes, clearing, CPU writes and BMP diagnostics from the validated runtime geometry; dimensions are bounded before allocation and allocation/map failures are checked.
 - [x] Pass the same geometry through GPU buffer creation, framebuffer/render-pass setup, viewport/scissor and all presentation paths.
 - [ ] Keep the logical Wine desktop dimensions independent from the physical VideoOut buffer dimensions.
-- [ ] Read `sceSystemServiceGetDisplaySafeAreaInfo` and apply its ratio to the whole desktop and overlays, retaining full-frame output as the fallback if the query fails. Verify the actual ABI, module and `libSceSystemService` link; do not call the private `sceVideoOutSysSetOverscanRatio`. Default behavior must keep all desktop pixels visible; avoid silently cropping content.
+- [x] Query the safe-area ratio at startup; if the module, symbol or value is invalid, use 1.0 and retain full-frame output.
+- [x] Apply the safe rectangle to CPU/GPU scaling, cursor, busy indicator, FPS, Steam, overlay and separate windows. ESTIRAR fills the safe area, not the full output.
+- [ ] Verify the ABI and behavior on actual PS4 firmware; do not call the private `sceVideoOutSysSetOverscanRatio`.
 - [x] Keep aspect-preserving fit and per-program stretch behavior consistent, including letterboxing/pillarboxing, at the active output size.
-- [ ] Audit cursor, busy indicator, FPS, Steam UI, overlay, separate windows and input pointer-area mapping against the final visible desktop rectangle.
+- [x] Audit and constrain cursor, busy indicator, FPS, Steam UI, overlay and separate windows to the safe rectangle; physical pointer mapping validation remains pending.
 - [x] Preserve CPU fallback and GPU/layered presentation behavior.
 - [ ] Add host-side geometry tests for common 16:9 and 16:10 modes, odd dimensions, tiny/invalid modes, and safe-area calculations.
 - [ ] Run the repository's focused checks and inspect the final diff before marking source work complete.
@@ -60,6 +62,6 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 
 ## Current status
 
-**Diagnosis:** the fixed 1280×720 output geometry was confirmed and has now been replaced by a startup query of the active VideoOut mode. The full-mode and pane dimensions are logged separately. This addresses a framebuffer/output-mode mismatch when one exists, but does not yet compensate for HDMI overscan or prove that the pane fields represent a safe area.
+**Diagnosis:** the sink queries the active VideoOut mode and the PS4-configured safe-area ratio. The desktop and its interfaces are fitted inside the safe rectangle; if the safe-area query fails, full-frame output is used. Acceptance on real PS4 firmware remains unverified.
 
-**Source status:** runtime output sizing is implemented on `dev`; compile/link validation and physical PS4 acceptance remain pending. No hardware fix is claimed yet.
+**Source status:** runtime output sizing and safe-area fitting are implemented on `dev`. Compilation with the pinned SDK and physical PS4 acceptance remain pending; no hardware validation is claimed.
