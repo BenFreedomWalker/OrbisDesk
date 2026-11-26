@@ -27,6 +27,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Corrected escaped newline sequences in the VideoOut startup diagnostics so each message is emitted on its own log line.
 - [x] Investigated the available margin/overscan symbols: `sceVideoOutSetWindowModeMargins` is not a documented general full-screen overscan control, and `sceVideoOutSysSetOverscanRatio` is a private interface with no usable signature in the public SDK.
 - [x] Confirmed `sceSystemServiceGetDisplaySafeAreaInfo` returns a `float` safe-area ratio (documented platform contract in GameMaker). Since OpenOrbis leaves the return type unspecified, the sink loads `libSceSystemService.sprx` and resolves the symbol with `sceKernelDlsym`, avoiding a static link dependency.
+- [x] Checked the pinned OpenOrbis v0.5.4 `libkernel.h`: `sceKernelLoadStartModule` returns `uint32_t`, and `sceKernelDlsym` accepts an `int32_t` module handle. The current signed check interprets the module-load error code; target-runtime behavior remains unverified.
 
 ## Implementation checklist
 
