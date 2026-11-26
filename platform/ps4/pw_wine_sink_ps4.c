@@ -1096,7 +1096,7 @@ flip:;
 #endif
 #ifdef PW_SINK_EXTERNAL_INPUT
     if(pw_hw_separate_draw(target,pitch,OUT_WIDTH,OUT_HEIGHT,left,top,scale_w,scale_h,width,height))
-        draw_cursor(target,left,top,scale_w,scale_h);  /* the pointer stays over the separate window */
+        draw_cursor(target,left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height);  /* the pointer stays over the separate window */
     draw_busy(target,left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height);  /* W293 */
     uint32_t *safe_target=target+(size_t)safe_top*pitch+safe_left;
     draw_fps(safe_target,safe_height,sceKernelGetProcessTime());
