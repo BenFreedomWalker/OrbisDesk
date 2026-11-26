@@ -29,7 +29,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 
 - [ ] Build/link against the project's exact pinned OpenOrbis toolchain and confirm the import resolves; verify the call's runtime return and reported dimensions on target firmware.
 - [x] Log the queried active output dimensions and pane dimensions at startup; query failure retains the 1280×720 fallback and does not block startup.
-- [ ] Decide which reported dimensions describe the registered framebuffer and which describe the visible output/pane. Do not assume `paneWidth`/`paneHeight` are safe-area dimensions without evidence.
+- [ ] Verify on the target PS4 that `width`/`height` are accepted as the registered framebuffer size; determine the meaning of `paneWidth`/`paneHeight` without assuming they are safe-area dimensions.
 - [x] Replace the compile-time 1280×720 output constants with validated runtime width/height and runtime pitch; preserve a 1280×720 fallback when the query fails or returns implausible dimensions.
 - [ ] Consolidate the runtime geometry into one explicit structure and verify that mode changes during a running title are either handled or explicitly unsupported.
 - [x] Size direct-memory allocation, buffer attributes, clearing, CPU writes and BMP diagnostics from the validated runtime geometry; dimensions are bounded before allocation and allocation/map failures are checked.
