@@ -46,6 +46,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Audit and constrain cursor, busy indicator, FPS, Steam UI, overlay and separate windows to the safe rectangle; physical pointer mapping validation remains pending.
 - [x] Preserve CPU fallback and GPU/layered presentation behavior.
 - [x] Extract output/safe-area geometry into `platform/ps4/pw_display_fit.h`; compare aspect ratios before integer division so fractional overflow cannot be hidden by truncation, and round safe-area dimensions to the nearest pixel.
+- [x] Add the host C geometry cases and run `tests/test_display_fit_host.py` in the PR metadata checks.
 - [ ] Run the repository's focused checks and inspect the final diff before marking source work complete.
 
 ## Host-side geometry check
