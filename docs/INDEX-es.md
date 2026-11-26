@@ -24,6 +24,8 @@ Regenerar ambos idiomas: `python3 tools/build-doc-index.py`.
 
 ## Emulador y validación del escritorio
 
+- [PS4_DISPLAY_FIT-es.md](PS4_DISPLAY_FIT-es.md) — Ajuste de imagen y lista de comprobación del recorte de bordes en PS4
+
 - [SHAD_W284_DESKTOP-es.md](SHAD_W284_DESKTOP-es.md) — Escritorio W284 en el fork Linux de shadPS4
 - [TASKBAR_CENTER_FIX-es.md](TASKBAR_CENTER_FIX-es.md) — Fondo de barra y pruebas de Start en shadPS4
 
