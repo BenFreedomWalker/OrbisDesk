@@ -51,6 +51,7 @@ jobs:
           python3 tools/build-doc-index.py --check
           python3 tools/ci/check-locks.py
           python3 tests/test_project_brand.py
+          python3 tests/test_display_fit_host.py
           python3 -m unittest discover -s tools/ci -p 'test_*.py'
           python3 -m compileall -q tools tests
   host:
