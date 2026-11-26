@@ -139,7 +139,7 @@ static void query_display_safe_area(void)
     }
     pw_get_display_safe_area_fn get_ratio=(pw_get_display_safe_area_fn)symbol;
     float ratio=get_ratio();
-    if(ratio<0.5f || ratio>1.0f) {
+    if(!(ratio>=0.5f && ratio<=1.0f)) {
         fprintf(stderr,"PWBOOT safe_area_invalid ratio=%.4f; using 1.0\n",ratio);
         return;
     }
