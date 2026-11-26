@@ -41,6 +41,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [ ] Mantener independientes las dimensiones lógicas del escritorio Wine y las dimensiones físicas del buffer VideoOut.
 - [x] Consultar el ratio de área segura al iniciar; si el módulo, el símbolo o el valor no son válidos, usar 1.0 y conservar el modo de pantalla completa.
 - [x] Aplicar el rectángulo seguro al escalado CPU/GPU, cursor, indicador de actividad, FPS, Steam, superposición y ventanas separadas. ESTIRAR llena el área segura, no la salida completa.
+- [x] Limitar el compositor de ventanas del proceso separado al área segura, no solo a los límites completos de VideoOut; el sink pasa el mismo rectángulo seguro que usan el escritorio, el cursor y las superposiciones.
 - [ ] Verificar el ABI y el comportamiento en firmware real de PS4; no llamar a la interfaz privada `sceVideoOutSysSetOverscanRatio`.
 - [x] Mantener coherentes el ajuste conservando proporción y la opción ESTIRAR por programa, incluidos los márgenes negros laterales o superior/inferior, con el tamaño de salida activo.
 - [x] Revisar y limitar cursor, indicador de actividad, FPS, interfaz Steam, superposición y ventanas separadas al rectángulo seguro; la validación física del mapeo del puntero sigue pendiente.
