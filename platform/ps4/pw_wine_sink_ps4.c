@@ -32,7 +32,9 @@
 #if defined(PW_SINK_GPU) && defined(PW_SINK_ASYNC) && defined(PW_SINK_EXTERNAL_INPUT)
 #define PW_FG_DISPLAY 1
 #endif
-enum {OUT_WIDTH=1280,OUT_HEIGHT=720,OUT_BUFFERS=2,MAX_DUMPS=PW_SINK_MAX_DUMPS};
+enum {OUT_BUFFERS=2,MAX_DUMPS=PW_SINK_MAX_DUMPS};
+/* The active VideoOut mode, queried after opening the primary output. */
+static unsigned OUT_WIDTH=1280,OUT_HEIGHT=720;
 /* alpha-1 (pw_trace.h): without traces no BMP dumps (each a synchronous multi-MB write, and the CPU path hashed
  * every frame while dumps were left), no periodic frame lines, no show() timing. The first 8 frame_presented
  * lines stay: they are the run's "presented" evidence (tools/fetch-hardware.py). */
@@ -42,7 +44,7 @@ enum {FORMAT_A8R8G8B8_SRGB=(int)0x80000000,TILING_LINEAR=1,USER_MAIN=255,FLIP_VS
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static int handle=-1,failed;
 static uint32_t *buffers[OUT_BUFFERS];
-static unsigned pitch=OUT_WIDTH;
+static unsigned pitch=1280;
 /* W144: a window or the wallpaper as ps5drv stacks them (struct ps5_layer in ps5drv.c).
  * W152: or a Vulkan program's presented image, scaled from source_width x source_height to the
  * rect (flags: 1 an image outside the pool, 2 its words are R,G,B,A; native/hw_sink_gpu). */
@@ -118,21 +120,37 @@ static uint64_t last_dump_hash;
 
 static int open_video(void)
 {
-    const size_t bytes=(size_t)OUT_WIDTH*OUT_HEIGHT*4,aligned=(bytes+0x1fffff)&~(size_t)0x1fffff;
     off_t physical=0;void *memory=NULL;
     handle=sceVideoOutOpen(USER_MAIN,0,0,NULL);
-    if(handle<0) {fprintf(stderr,"PWBOOT video_out_blocked open rc=%x\n",handle);return -1;}
+    if(handle<0) {fprintf(stderr,"PWBOOT video_out_blocked open rc=%x\\n",handle);return -1;}
+
+    /* Use the active HDMI mode for the registered buffers. paneWidth/paneHeight are
+     * recorded separately: they are not assumed to be safe-area dimensions. */
+    OrbisVideoOutResolutionStatus resolution;memset(&resolution,0,sizeof(resolution));
+    int resolution_rc=sceVideoOutGetResolutionStatus(handle,&resolution);
+    if(!resolution_rc && resolution.width>=320 && resolution.height>=200 &&
+       resolution.width<=4096 && resolution.height<=2160) {
+        OUT_WIDTH=resolution.width;OUT_HEIGHT=resolution.height;
+    } else {
+        fprintf(stderr,"PWBOOT video_out_resolution_unavailable rc=%x reported=%ux%u; using %ux%u\\n",
+                resolution_rc,resolution.width,resolution.height,OUT_WIDTH,OUT_HEIGHT);
+    }
+    fprintf(stderr,"PWBOOT video_out_mode %ux%u pane=%ux%u rc=%x\\n",OUT_WIDTH,OUT_HEIGHT,
+            resolution.paneWidth,resolution.paneHeight,resolution_rc);
+    pitch=OUT_WIDTH;
+    const size_t bytes=(size_t)OUT_WIDTH*OUT_HEIGHT*4,aligned=(bytes+0x1fffff)&~(size_t)0x1fffff;
 #ifdef PW_SINK_GPU
     if(!pw_sink_gpu_buffers(handle,OUT_WIDTH,OUT_HEIGHT,buffers,&pitch)) {
         gpu=1;
-        fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u gpu=1 pitch=%u\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS,pitch);
+        fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u gpu=1 pitch=%u\\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS,pitch);
         return 0;
     }
-    fprintf(stderr,"PWSINK gpu_unavailable: CPU copy\n");
+    fprintf(stderr,"PWSINK gpu_unavailable: CPU copy\\n");
 #endif
+    pitch=OUT_WIDTH;
     int rc=sceKernelAllocateDirectMemory(0,sceKernelGetDirectMemorySize(),aligned*OUT_BUFFERS,0x200000,3,&physical);
     if(!rc) rc=sceKernelMapDirectMemory(&memory,aligned*OUT_BUFFERS,0x33,0,physical,0x200000);
-    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked memory rc=%x\n",rc);return -1;}
+    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked memory rc=%x\\n",rc);return -1;}
     OrbisVideoOutBufferAttribute attribute;memset(&attribute,0,sizeof(attribute));
     sceVideoOutSetBufferAttribute(&attribute,FORMAT_A8R8G8B8_SRGB,TILING_LINEAR,0,OUT_WIDTH,OUT_HEIGHT,OUT_WIDTH);
     void *addresses[OUT_BUFFERS];
@@ -140,8 +158,8 @@ static int open_video(void)
         buffers[i]=(uint32_t *)((char *)memory+aligned*i);memset(buffers[i],0,bytes);addresses[i]=buffers[i];
     }
     rc=sceVideoOutRegisterBuffers(handle,0,addresses,OUT_BUFFERS,&attribute);
-    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked register rc=%x\n",rc);return -1;}
-    fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS);
+    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked register rc=%x\\n",rc);return -1;}
+    fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u\\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS);
     return 0;
 }
 static uint64_t frame_hash(const uint8_t *bgra,uint32_t width,uint32_t height,uint32_t stride)
