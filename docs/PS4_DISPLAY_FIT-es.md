@@ -29,7 +29,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 
 - [ ] Compilar/enlazar con el toolchain OpenOrbis exacto del proyecto y confirmar que se resuelve la importación; verificar en la PS4 el retorno y las dimensiones informadas.
 - [x] Registrar al inicio las dimensiones de salida activas y las dimensiones del panel; si falla la consulta, se conserva 1280×720 y el escritorio puede iniciar.
-- [ ] Determinar qué dimensiones describen el framebuffer registrado y cuáles describen el área visible. No asumir que `paneWidth`/`paneHeight` son dimensiones del área segura sin pruebas.
+- [ ] Verificar en la PS4 que `width`/`height` se aceptan como tamaño del framebuffer registrado; determinar el significado de `paneWidth`/`paneHeight` sin asumir que son el área segura.
 - [x] Sustituir las constantes de salida 1280×720 por anchura/altura validadas en tiempo de ejecución y pitch dinámico; conservar 1280×720 como respaldo si la consulta falla o devuelve dimensiones inverosímiles.
 - [ ] Consolidar la geometría en una estructura explícita y verificar si los cambios de modo durante la ejecución se admiten o no.
 - [x] Dimensionar la reserva de memoria directa, atributos de buffers, limpieza, escrituras de CPU y diagnósticos BMP según la geometría validada; las dimensiones se limitan antes de reservar y se comprueban los fallos de reserva/mapeo.
@@ -57,6 +57,6 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 
 ## Estado actual
 
-**Diagnóstico:** la geometría fija de salida 1280×720 está confirmada. El recorte en los cuatro bordes informado por el usuario concuerda con una discrepancia entre la salida de pantalla completa del sink y el área visible de la pantalla, pero aún no se ha demostrado la causa exacta (discrepancia del modo activo, escalado por overscan/área segura del monitor o ambos).
+**Diagnóstico:** se confirmó la geometría fija 1280×720 y ahora se reemplazó por una consulta al inicio del modo VideoOut activo. Las dimensiones del modo completo y del panel se registran por separado. Esto corrige una discrepancia de framebuffer/modo de salida cuando existe, pero todavía no compensa el overscan HDMI ni demuestra que los campos del panel representen un área segura.
 
 **Corrección del código:** todavía no implementada. El siguiente paso seguro es establecer el modo VideoOut en tiempo de ejecución y distinguir el tamaño del modo de salida de la compensación de overscan. No se declara ninguna aceptación física.
