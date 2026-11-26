@@ -26,6 +26,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Did not substitute the monitor's 1360×768 panel size by guess; the active VideoOut mode is queried from the console instead.
 - [x] Corrected escaped newline sequences in the VideoOut startup diagnostics so each message is emitted on its own log line.
 - [x] Investigated the available margin/overscan symbols: `sceVideoOutSetWindowModeMargins` is not a documented general full-screen overscan control, and `sceVideoOutSysSetOverscanRatio` is a private interface with no usable signature in the public SDK.
+- [x] Found a more appropriate public API: `sceSystemServiceGetDisplaySafeAreaInfo` returns the PS4-configured safe-area ratio. OpenOrbis declares the symbol but leaves its signature incomplete; ABI and `libSceSystemService` link availability still need verification.
 
 ## Implementation checklist
 
@@ -37,7 +38,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Size direct-memory allocation, buffer attributes, clearing, CPU writes and BMP diagnostics from the validated runtime geometry; dimensions are bounded before allocation and allocation/map failures are checked.
 - [x] Pass the same geometry through GPU buffer creation, framebuffer/render-pass setup, viewport/scissor and all presentation paths.
 - [ ] Keep the logical Wine desktop dimensions independent from the physical VideoOut buffer dimensions.
-- [ ] Add a configurable safe-area inset/scale if the symptom is HDMI overscan rather than a framebuffer-mode mismatch. Do not call the private `sceVideoOutSysSetOverscanRatio` without documented ABI, permission and compatibility guarantees. Default behavior must keep all desktop pixels visible; avoid silently cropping content.
+- [ ] Read `sceSystemServiceGetDisplaySafeAreaInfo` and apply its ratio to the whole desktop and overlays, retaining full-frame output as the fallback if the query fails. Verify the actual ABI, module and `libSceSystemService` link; do not call the private `sceVideoOutSysSetOverscanRatio`. Default behavior must keep all desktop pixels visible; avoid silently cropping content.
 - [x] Keep aspect-preserving fit and per-program stretch behavior consistent, including letterboxing/pillarboxing, at the active output size.
 - [ ] Audit cursor, busy indicator, FPS, Steam UI, overlay, separate windows and input pointer-area mapping against the final visible desktop rectangle.
 - [x] Preserve CPU fallback and GPU/layered presentation behavior.
