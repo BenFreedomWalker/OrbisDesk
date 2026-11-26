@@ -26,6 +26,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] No se sustituyó a ciegas el tamaño del panel 1360×768 del monitor; la consola consulta su propio modo VideoOut activo.
 - [x] Se corrigieron los escapes de salto de línea en los mensajes de diagnóstico de inicio de VideoOut.
 - [x] Se investigaron las alternativas de márgenes y overscan: `sceVideoOutSetWindowModeMargins` no es un control general documentado para pantalla completa, y `sceVideoOutSysSetOverscanRatio` es una interfaz privada sin una firma utilizable en el SDK público.
+- [x] Se encontró una API pública más adecuada: `sceSystemServiceGetDisplaySafeAreaInfo`, que devuelve el ratio de área segura configurado en PS4. El encabezado OpenOrbis declara el símbolo, pero con una firma incompleta; falta verificar el ABI y el enlace con `libSceSystemService`.
 
 ## Lista de implementación
 
@@ -37,7 +38,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Dimensionar la reserva de memoria directa, atributos de buffers, limpieza, escrituras de CPU y diagnósticos BMP según la geometría validada; las dimensiones se limitan antes de reservar y se comprueban los fallos de reserva/mapeo.
 - [x] Pasar la misma geometría a la creación de buffers GPU, configuración de framebuffer/render pass, viewport/scissor y todas las rutas de presentación.
 - [ ] Mantener independientes las dimensiones lógicas del escritorio Wine y las dimensiones físicas del buffer VideoOut.
-- [ ] Añadir un margen/escala configurable de área segura si el síntoma se debe al overscan HDMI y no a un modo de framebuffer incorrecto. No llamar a la interfaz privada `sceVideoOutSysSetOverscanRatio` sin garantías documentadas de ABI, permisos y compatibilidad. El comportamiento predeterminado debe mantener visibles todos los píxeles del escritorio; no recortar contenido silenciosamente.
+- [ ] Leer `sceSystemServiceGetDisplaySafeAreaInfo` y aplicar su ratio a todo el escritorio y las superposiciones, conservando la salida completa como respaldo si la consulta falla. Verificar la firma real, el módulo y el enlace con `libSceSystemService`; no llamar a la interfaz privada `sceVideoOutSysSetOverscanRatio`. El comportamiento predeterminado debe mantener visibles todos los píxeles del escritorio; no recortar contenido silenciosamente.
 - [x] Mantener coherentes el ajuste conservando proporción y la opción ESTIRAR por programa, incluidos los márgenes negros laterales o superior/inferior, con el tamaño de salida activo.
 - [ ] Revisar cursor, indicador de actividad, FPS, interfaz Steam, superposición, ventanas separadas y mapeo del puntero respecto del rectángulo visible final del escritorio.
 - [x] Conservar las rutas de respaldo por CPU y la presentación GPU/capas.
