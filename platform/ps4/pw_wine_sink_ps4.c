@@ -35,6 +35,7 @@
 enum {OUT_BUFFERS=2,MAX_DUMPS=PW_SINK_MAX_DUMPS};
 /* The active VideoOut mode, queried after opening the primary output. */
 static unsigned OUT_WIDTH=1280,OUT_HEIGHT=720;
+static float display_safe_area_ratio=1.0f;
 /* alpha-1 (pw_trace.h): without traces no BMP dumps (each a synchronous multi-MB write, and the CPU path hashed
  * every frame while dumps were left), no periodic frame lines, no show() timing. The first 8 frame_presented
  * lines stay: they are the run's "presented" evidence (tools/fetch-hardware.py). */
@@ -118,6 +119,34 @@ int pw_hw_sink_vk_windows(unsigned long long *out,int max)
 }
 static uint64_t last_dump_hash;
 
+/* The public OpenOrbis header leaves this system-service return type unspecified. GameMaker's
+ * PS4 platform contract documents the function as returning the safe-area ratio as a float.
+ * Resolve it at runtime so a missing optional system module never prevents the desktop starting. */
+typedef float (*pw_get_display_safe_area_fn)(void);
+static void query_display_safe_area(void)
+{
+    int32_t module=(int32_t)sceKernelLoadStartModule(
+        "/system/common/lib/libSceSystemService.sprx",0,NULL,0,NULL,NULL);
+    if(module<0) {
+        fprintf(stderr,"PWBOOT safe_area_module_unavailable rc=%x; using 1.0\\n",module);
+        return;
+    }
+    void *symbol=NULL;
+    int rc=sceKernelDlsym(module,"sceSystemServiceGetDisplaySafeAreaInfo",&symbol);
+    if(rc || !symbol) {
+        fprintf(stderr,"PWBOOT safe_area_symbol_unavailable rc=%x; using 1.0\\n",rc);
+        return;
+    }
+    pw_get_display_safe_area_fn get_ratio=(pw_get_display_safe_area_fn)symbol;
+    float ratio=get_ratio();
+    if(ratio<0.5f || ratio>1.0f) {
+        fprintf(stderr,"PWBOOT safe_area_invalid ratio=%.4f; using 1.0\\n",ratio);
+        return;
+    }
+    display_safe_area_ratio=ratio;
+    fprintf(stderr,"PWBOOT safe_area_ratio %.4f\\n",display_safe_area_ratio);
+}
+
 static int open_video(void)
 {
     off_t physical=0;void *memory=NULL;
@@ -137,6 +166,7 @@ static int open_video(void)
     }
     fprintf(stderr,"PWBOOT video_out_mode %ux%u pane=%ux%u rc=%x\n",OUT_WIDTH,OUT_HEIGHT,
             resolution.paneWidth,resolution.paneHeight,resolution_rc);
+    query_display_safe_area();
     pitch=OUT_WIDTH;
     const size_t bytes=(size_t)OUT_WIDTH*OUT_HEIGHT*4,aligned=(bytes+0x1fffff)&~(size_t)0x1fffff;
 #ifdef PW_SINK_GPU
@@ -984,15 +1014,20 @@ static int show(void)
 #endif
     ++flips;
     uint32_t *target=buffers[flips%OUT_BUFFERS];
-    /* Nearest scaling that keeps the aspect, centred. */
-    uint32_t scale_w=OUT_WIDTH,scale_h=(uint32_t)((uint64_t)height*OUT_WIDTH/width);
-    if(scale_h>OUT_HEIGHT) {scale_h=OUT_HEIGHT;scale_w=(uint32_t)((uint64_t)width*OUT_HEIGHT/height);}
+    /* Fit the desktop inside the PS4-configured safe area, not the full HDMI raster. */
+    uint32_t safe_width=(uint32_t)((double)OUT_WIDTH*display_safe_area_ratio);
+    uint32_t safe_height=(uint32_t)((double)OUT_HEIGHT*display_safe_area_ratio);
+    if(safe_width<1) safe_width=OUT_WIDTH;
+    if(safe_height<1) safe_height=OUT_HEIGHT;
+    uint32_t safe_left=(OUT_WIDTH-safe_width)/2,safe_top=(OUT_HEIGHT-safe_height)/2;
+    /* Nearest scaling that keeps the aspect, centred within the safe rectangle. */
+    uint32_t scale_w=safe_width,scale_h=(uint32_t)((uint64_t)height*safe_width/width);
+    if(scale_h>safe_height) {scale_h=safe_height;scale_w=(uint32_t)((uint64_t)width*safe_height/height);}
 #ifdef PW_SINK_EXTERNAL_INPUT
-    /* W266: the overlay's ESTIRAR for the program in front: the whole output, each axis on its own; the pointer
-     * is drawn with the same scale (draw_cursor, cursor_origin) */
-    if(pw_hw_overlay_stretch()) {scale_w=OUT_WIDTH;scale_h=OUT_HEIGHT;}
+    /* W266: ESTIRAR fills the safe rectangle on each axis; it does not override system safe area. */
+    if(pw_hw_overlay_stretch()) {scale_w=safe_width;scale_h=safe_height;}
 #endif
-    uint32_t left=(OUT_WIDTH-scale_w)/2,top=(OUT_HEIGHT-scale_h)/2;
+    uint32_t left=safe_left+(safe_width-scale_w)/2,top=safe_top+(safe_height-scale_h)/2;
     uint64_t start=sceKernelGetProcessTime();
 #ifdef PW_SINK_GPU
     if(gpu && (layered || (bgra==gpu_screen && width==gpu_width && height==gpu_height))) {
@@ -1045,9 +1080,10 @@ flip:;
     if(pw_hw_separate_draw(target,pitch,OUT_WIDTH,OUT_HEIGHT,left,top,scale_w,scale_h,width,height))
         draw_cursor(target,left,top,scale_w,scale_h);  /* the pointer stays over the separate window */
     draw_busy(target,left,top,scale_w,scale_h);  /* W293 */
-    draw_fps(target,sceKernelGetProcessTime());
-    pw_hw_steam_draw(target,pitch,OUT_WIDTH,OUT_HEIGHT);
-    pw_hw_overlay_draw(target,pitch,OUT_WIDTH,OUT_HEIGHT);  /* W236 */
+    uint32_t *safe_target=target+(size_t)safe_top*pitch+safe_left;
+    draw_fps(safe_target,sceKernelGetProcessTime());
+    pw_hw_steam_draw(safe_target,pitch,safe_width,safe_height);
+    pw_hw_overlay_draw(safe_target,pitch,safe_width,safe_height);  /* W236 */
 #endif
 #ifdef PW_SINK_EXTERNAL_INPUT
     ft_poll();  /* stage 1 */
