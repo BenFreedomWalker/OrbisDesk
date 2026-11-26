@@ -1017,8 +1017,9 @@ extern void pw_hw_overlay_draw(uint32_t *pixels,unsigned pitch,unsigned width,un
 /* the Steam client inside the title (native/steam/steam_ui.c): its page over the whole frame while open */
 extern int pw_hw_steam_draw(uint32_t *pixels,unsigned pitch,unsigned width,unsigned height);
 /* PoP Phase C (native/pop_loader_spawn.h): a separate process's window pixels, at its desktop rectangle */
-extern int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,unsigned left,unsigned top,
-                               unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h);
+extern int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,
+                               unsigned safe_left,unsigned safe_top,unsigned safe_width,unsigned safe_height,
+                               unsigned left,unsigned top,unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h);
 #endif
 static int show(void)
 {
