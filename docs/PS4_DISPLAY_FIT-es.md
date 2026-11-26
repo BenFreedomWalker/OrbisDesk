@@ -27,6 +27,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Se corrigieron los escapes de salto de línea en los mensajes de diagnóstico de inicio de VideoOut.
 - [x] Se investigaron las alternativas de márgenes y overscan: `sceVideoOutSetWindowModeMargins` no es un control general documentado para pantalla completa, y `sceVideoOutSysSetOverscanRatio` es una interfaz privada sin una firma utilizable en el SDK público.
 - [x] Se confirmó que `sceSystemServiceGetDisplaySafeAreaInfo` devuelve un valor `float` con el ratio de área segura (contrato de plataforma documentado por GameMaker). Como el encabezado OpenOrbis deja la firma sin tipo, el sink carga `libSceSystemService.sprx` y resuelve el símbolo con `sceKernelDlsym`, sin depender de un enlace estático.
+- [x] Se comprobó `libkernel.h` de OpenOrbis v0.5.4, la versión fijada: `sceKernelLoadStartModule` devuelve `uint32_t` y `sceKernelDlsym` recibe un identificador de módulo `int32_t`. La comprobación con signo actual interpreta el código de error de carga; el comportamiento en la consola sigue sin verificarse.
 
 ## Lista de implementación
 
