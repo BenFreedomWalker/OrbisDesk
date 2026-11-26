@@ -226,7 +226,7 @@ static const char *const arrow[]={
  * cursor mode for the program in front decides: game (that rule), always, or hidden */
 static volatile int pointer_hidden;
 extern int pw_hw_cursor_mode(void);  /* native/hw_overlay.c: 0 game, 1 always, 2 hidden */
-extern int pw_hw_overlay_stretch(void);  /* W266: native/hw_overlay.c, 1 to fill the output */
+extern int pw_hw_overlay_stretch(void);  /* W266: native/hw_overlay.c, 1 to fill the safe rectangle */
 extern int pw_hw_busy_frame(void);  /* W293: native/hw_overlay.c, 0-7 while a program starts, -1 otherwise */
 static int pointer_off(void)
 {
