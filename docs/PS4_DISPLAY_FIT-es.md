@@ -59,4 +59,4 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 
 **Diagnóstico:** se confirmó la geometría fija 1280×720 y ahora se reemplazó por una consulta al inicio del modo VideoOut activo. Las dimensiones del modo completo y del panel se registran por separado. Esto corrige una discrepancia de framebuffer/modo de salida cuando existe, pero todavía no compensa el overscan HDMI ni demuestra que los campos del panel representen un área segura.
 
-**Corrección del código:** todavía no implementada. El siguiente paso seguro es establecer el modo VideoOut en tiempo de ejecución y distinguir el tamaño del modo de salida de la compensación de overscan. No se declara ninguna aceptación física.
+**Estado del código:** el dimensionamiento dinámico de salida está implementado en `dev`; siguen pendientes la validación de compilación/enlace y la aceptación física en PS4. Todavía no se afirma que la corrección esté verificada en hardware.
