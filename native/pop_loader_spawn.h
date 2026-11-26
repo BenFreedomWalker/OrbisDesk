@@ -270,7 +270,13 @@ unsigned long long pw_hw_separate_window(int x, int y);
 unsigned long long pw_hw_separate_window(int x, int y){
     if(pthread_mutex_trylock(&pop_sep_surface_lock)) return 0;
     const struct pop_sep_frame *f = &pop_sep_shown;
-    unsigned long long hwnd = pop_sep_visible && x >= f->x && x < f->x + f->w && y >= f->y && y < f->y + f->h ? f->window : 0;
+    /* Frame coordinates are untrusted signed 32-bit values. Widen before adding the
+     * dimensions: f->x + f->w and f->y + f->h can overflow int otherwise. */
+    int64_t right=(int64_t)f->x+(int64_t)f->w;
+    int64_t bottom=(int64_t)f->y+(int64_t)f->h;
+    unsigned long long hwnd = pop_sep_visible && f->w>0 && f->h>0 &&
+        (int64_t)x >= f->x && (int64_t)x < right &&
+        (int64_t)y >= f->y && (int64_t)y < bottom ? f->window : 0;
     pthread_mutex_unlock(&pop_sep_surface_lock);
     return hwnd;
 }
