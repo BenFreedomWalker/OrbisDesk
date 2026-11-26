@@ -128,23 +128,23 @@ static void query_display_safe_area(void)
     int32_t module=(int32_t)sceKernelLoadStartModule(
         "/system/common/lib/libSceSystemService.sprx",0,NULL,0,NULL,NULL);
     if(module<0) {
-        fprintf(stderr,"PWBOOT safe_area_module_unavailable rc=%x; using 1.0\\n",module);
+        fprintf(stderr,"PWBOOT safe_area_module_unavailable rc=%x; using 1.0\n",module);
         return;
     }
     void *symbol=NULL;
     int rc=sceKernelDlsym(module,"sceSystemServiceGetDisplaySafeAreaInfo",&symbol);
     if(rc || !symbol) {
-        fprintf(stderr,"PWBOOT safe_area_symbol_unavailable rc=%x; using 1.0\\n",rc);
+        fprintf(stderr,"PWBOOT safe_area_symbol_unavailable rc=%x; using 1.0\n",rc);
         return;
     }
     pw_get_display_safe_area_fn get_ratio=(pw_get_display_safe_area_fn)symbol;
     float ratio=get_ratio();
     if(ratio<0.5f || ratio>1.0f) {
-        fprintf(stderr,"PWBOOT safe_area_invalid ratio=%.4f; using 1.0\\n",ratio);
+        fprintf(stderr,"PWBOOT safe_area_invalid ratio=%.4f; using 1.0\n",ratio);
         return;
     }
     display_safe_area_ratio=ratio;
-    fprintf(stderr,"PWBOOT safe_area_ratio %.4f\\n",display_safe_area_ratio);
+    fprintf(stderr,"PWBOOT safe_area_ratio %.4f\n",display_safe_area_ratio);
 }
 
 static int open_video(void)
@@ -306,7 +306,7 @@ static void dump_output(const uint32_t *target)
 static int fps_overlay;
 static unsigned vk_fps_tenths,sink_fps_tenths,sink_second_flips;
 static uint64_t vk_fps_us,sink_second_us;
-static void draw_fps(uint32_t *target,uint64_t now)
+static void draw_fps(uint32_t *target,unsigned safe_height,uint64_t now)
 {
     ++sink_second_flips;
     if(!sink_second_us) sink_second_us=now;
@@ -323,7 +323,7 @@ static void draw_fps(uint32_t *target,uint64_t now)
     int w=(int)strlen(text)*6*SCALE+2*PAD,h=7*SCALE+2*PAD;
     for(int y=Y-PAD;y<Y-PAD+h;++y)
         for(int x=X-PAD;x<X-PAD+w;++x) target[(size_t)y*pitch+x]=0xff000000u;
-    hw_text(target,(int)pitch,OUT_HEIGHT,X,Y,text,0xffffff00u,SCALE);
+    hw_text(target,(int)pitch,safe_height,X,Y,text,0xffffff00u,SCALE);
 }
 /* W236: the frames Wine hands to the sink (pw_wine_present, pw_wine_present_layers), per second with
  * their mean and longest interval, for the overlay's readout (native/hw_overlay.c); lock held */
@@ -1081,7 +1081,7 @@ flip:;
         draw_cursor(target,left,top,scale_w,scale_h);  /* the pointer stays over the separate window */
     draw_busy(target,left,top,scale_w,scale_h);  /* W293 */
     uint32_t *safe_target=target+(size_t)safe_top*pitch+safe_left;
-    draw_fps(safe_target,sceKernelGetProcessTime());
+    draw_fps(safe_target,safe_height,sceKernelGetProcessTime());
     pw_hw_steam_draw(safe_target,pitch,safe_width,safe_height);
     pw_hw_overlay_draw(safe_target,pitch,safe_width,safe_height);  /* W236 */
 #endif
