@@ -45,8 +45,12 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Keep aspect-preserving fit and per-program stretch behavior consistent, including letterboxing/pillarboxing, at the active output size.
 - [x] Audit and constrain cursor, busy indicator, FPS, Steam UI, overlay and separate windows to the safe rectangle; physical pointer mapping validation remains pending.
 - [x] Preserve CPU fallback and GPU/layered presentation behavior.
-- [ ] Add host-side geometry tests for common 16:9 and 16:10 modes, odd dimensions, tiny/invalid modes, and safe-area calculations.
+- [x] Extract output/safe-area geometry into `platform/ps4/pw_display_fit.h`; compare aspect ratios before integer division so fractional overflow cannot be hidden by truncation, and round safe-area dimensions to the nearest pixel.
 - [ ] Run the repository's focused checks and inspect the final diff before marking source work complete.
+
+## Host-side geometry check
+
+Run `python3 tests/test_display_fit_host.py` from the repository root. The test covers full-frame and safe-area 16:9 output, the 1360×768 target, 4:3 centering, odd output dimensions, safe-area rounding, ESTIRAR, invalid/NaN ratios, and invalid dimensions. It verifies that the content rectangle remains inside the safe rectangle. This is a host-only geometry check; it does not compile the PS4 sink or validate VideoOut/GPU behavior.
 
 ## Physical PS4 test checklist — pending user hardware access
 
