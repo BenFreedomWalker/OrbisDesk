@@ -50,7 +50,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 
 ## Host-side geometry check
 
-Run `python3 tests/test_display_fit_host.py` from the repository root. The test covers full-frame and safe-area 16:9 output, the 1360×768 target, 4:3 centering, odd output dimensions, safe-area rounding, ESTIRAR, invalid/NaN ratios, and invalid dimensions. It verifies that the content rectangle remains inside the safe rectangle. This is a host-only geometry check; it does not compile the PS4 sink or validate VideoOut/GPU behavior.
+Run `python3 tests/test_display_fit_host.py` from the repository root. The test covers full-frame and safe-area 16:9 output, 16:10 output, a small 320×200 mode, the 1360×768 target, 4:3 centering, odd output dimensions, safe-area rounding, ESTIRAR, invalid/NaN ratios, and invalid dimensions. It verifies that the content rectangle remains inside the safe rectangle. This is a host-only geometry check; it does not compile the PS4 sink or validate VideoOut/GPU behavior.
 
 ## Physical PS4 test checklist — pending user hardware access
 
