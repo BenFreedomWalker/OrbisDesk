@@ -122,7 +122,7 @@ static int open_video(void)
 {
     off_t physical=0;void *memory=NULL;
     handle=sceVideoOutOpen(USER_MAIN,0,0,NULL);
-    if(handle<0) {fprintf(stderr,"PWBOOT video_out_blocked open rc=%x\\n",handle);return -1;}
+    if(handle<0) {fprintf(stderr,"PWBOOT video_out_blocked open rc=%x\n",handle);return -1;}
 
     /* Use the active HDMI mode for the registered buffers. paneWidth/paneHeight are
      * recorded separately: they are not assumed to be safe-area dimensions. */
@@ -145,12 +145,12 @@ static int open_video(void)
         fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u gpu=1 pitch=%u\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS,pitch);
         return 0;
     }
-    fprintf(stderr,"PWSINK gpu_unavailable: CPU copy\\n");
+    fprintf(stderr,"PWSINK gpu_unavailable: CPU copy\n");
 #endif
     pitch=OUT_WIDTH;
     int rc=sceKernelAllocateDirectMemory(0,sceKernelGetDirectMemorySize(),aligned*OUT_BUFFERS,0x200000,3,&physical);
     if(!rc) rc=sceKernelMapDirectMemory(&memory,aligned*OUT_BUFFERS,0x33,0,physical,0x200000);
-    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked memory rc=%x\\n",rc);return -1;}
+    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked memory rc=%x\n",rc);return -1;}
     OrbisVideoOutBufferAttribute attribute;memset(&attribute,0,sizeof(attribute));
     sceVideoOutSetBufferAttribute(&attribute,FORMAT_A8R8G8B8_SRGB,TILING_LINEAR,0,OUT_WIDTH,OUT_HEIGHT,OUT_WIDTH);
     void *addresses[OUT_BUFFERS];
@@ -158,8 +158,8 @@ static int open_video(void)
         buffers[i]=(uint32_t *)((char *)memory+aligned*i);memset(buffers[i],0,bytes);addresses[i]=buffers[i];
     }
     rc=sceVideoOutRegisterBuffers(handle,0,addresses,OUT_BUFFERS,&attribute);
-    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked register rc=%x\\n",rc);return -1;}
-    fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u\\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS);
+    if(rc) {fprintf(stderr,"PWBOOT video_out_blocked register rc=%x\n",rc);return -1;}
+    fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS);
     return 0;
 }
 static uint64_t frame_hash(const uint8_t *bgra,uint32_t width,uint32_t height,uint32_t stride)
