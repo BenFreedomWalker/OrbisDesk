@@ -29,7 +29,7 @@ def group(path):
         return 0
     if name.startswith('investigacion-'):
         return 1
-    if name in {'SHAD_W284_DESKTOP.md', 'TASKBAR_CENTER_FIX.md'}:
+    if name in {'SHAD_W284_DESKTOP.md', 'TASKBAR_CENTER_FIX.md', 'PS4_DISPLAY_FIT.md'}:
         return 2
     if name.startswith('STEAM_') or name in {'GAMES.md', 'THIRD_PARTY_FONTS.md'}:
         return 3
