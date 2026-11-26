@@ -35,7 +35,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Registrar al inicio las dimensiones de salida activas y las dimensiones del panel; si falla la consulta, se conserva 1280×720 y el escritorio puede iniciar.
 - [ ] Verificar en la PS4 que `width`/`height` se aceptan como tamaño del framebuffer registrado; determinar el significado de `paneWidth`/`paneHeight` sin asumir que son el área segura.
 - [x] Sustituir las constantes de salida 1280×720 por anchura/altura validadas en tiempo de ejecución y pitch dinámico; conservar 1280×720 como respaldo si la consulta falla o devuelve dimensiones inverosímiles.
-- [ ] Consolidar la geometría en una estructura explícita y verificar si los cambios de modo durante la ejecución se admiten o no.
+- [x] Consolidar los rectángulos de salida y área segura en `struct pw_display_fit`, compartida por el sink de PS4 y las pruebas del host. Los cambios del modo de salida durante un título no se supervisan; el sink usa el modo capturado al inicio.
 - [x] Dimensionar la reserva de memoria directa, atributos de buffers, limpieza, escrituras de CPU y diagnósticos BMP según la geometría validada; las dimensiones se limitan antes de reservar y se comprueban los fallos de reserva/mapeo.
 - [x] Pasar la misma geometría a la creación de buffers GPU, configuración de framebuffer/render pass, viewport/scissor y todas las rutas de presentación.
 - [ ] Mantener independientes las dimensiones lógicas del escritorio Wine y las dimensiones físicas del buffer VideoOut.
@@ -47,7 +47,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Conservar las rutas de respaldo por CPU y la presentación GPU/capas.
 - [x] Extraer la geometría de salida/área segura a `platform/ps4/pw_display_fit.h`; comparar las proporciones antes de la división entera para que el truncamiento no oculte un desbordamiento fraccionario y redondear las dimensiones del área segura al píxel más cercano.
 - [x] Añadir los casos de geometría en C para el host y ejecutar `tests/test_display_fit_host.py` en las comprobaciones de metadatos de las solicitudes de incorporación.
-- [ ] Ejecutar las comprobaciones específicas del repositorio y revisar el diff final antes de marcar el trabajo de código como terminado.
+- [x] Compilar y ejecutar `tests/display_fit_host_check.c` en el host con GCC (`-std=c11 -O2 -Wall -Wextra -Werror`); pasan los 12 casos de geometría. Esto no sustituye la compilación pendiente para PS4 ni la validación en hardware.
 
 ## Comprobación de geometría en el host
 
