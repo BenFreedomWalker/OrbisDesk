@@ -9,27 +9,29 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 ## Confirmado en el código actual de `dev`
 
 - [x] El síntoma informado es un recorte en los cuatro bordes, no solo un desplazamiento o un único lado.
-- [x] `platform/ps4/pw_wine_sink_ps4.c` fija `OUT_WIDTH=1280`, `OUT_HEIGHT=720` y dos buffers de salida.
+- [x] El sink original fijaba `OUT_WIDTH=1280`, `OUT_HEIGHT=720` y dos buffers; ahora consulta el modo VideoOut activo y dimensiona los buffers según `width`/`height`.
 - [x] `open_video()` reserva y registra los buffers de VideoOut con esas dimensiones fijas. La alternativa de CPU también limpia y direcciona la salida usando la altura, anchura y pitch fijos.
 - [x] `show()` escala el escritorio dentro del rectángulo fijo de 1280×720, lo centra y puede estirarlo a todo el rectángulo cuando está activada la opción ESTIRAR del programa.
 - [x] La posición del cursor, el indicador de actividad, la interfaz de Steam, la superposición y la composición de ventanas separadas reciben la misma geometría fija.
 - [x] El sink de GPU ya acepta anchura y altura de salida en `pw_sink_gpu_buffers()`, pero hay que auditar sus recursos de salida y el estado de viewport/framebuffer antes de introducir dimensiones dinámicas.
-- [x] Los encabezados incluidos de OpenOrbis declaran `sceVideoOutGetResolutionStatus()`; `OrbisVideoOutResolutionStatus` contiene `width`, `height`, `paneWidth` y `paneHeight`. Aún hay que verificar su disponibilidad en el SDK/runtime enlazado y el significado de cada campo para este título.
+- [x] La declaración de OpenOrbis usa `int32_t sceVideoOutGetResolutionStatus(int32_t, OrbisVideoOutResolutionStatus *)`; el estado expone `width`, `height`, `paneWidth` y `paneHeight`. El enlazador del arranque ya incluye `-lSceVideoOut`. Aún falta compilar con el SDK fijado y probar la llamada en una PS4.
 
 ## Trabajo completado en esta investigación
 
 - [x] Se volvieron a leer las instrucciones de la rama actual `dev` y la implementación del sink de pantalla.
 - [x] Se confirmó el HEAD de la rama antes de los cambios: `f3b98b622abbeb6880b4c04c6b2363e705aac4c4`.
 - [x] Se siguieron las dimensiones fijas por el registro de VideoOut, el escalado por CPU, la posición del cursor y las llamadas de superposición.
-- [x] Se comprobaron las declaraciones públicas de OpenOrbis para la API de estado de resolución VideoOut y su estructura.
+- [x] Se comprobó la declaración de la API y la estructura de estado de OpenOrbis, y se confirmó que el enlace del arranque incluye `-lSceVideoOut`.
+- [x] Se añadió una consulta al inicio, después de `sceVideoOutOpen()`. Las dimensiones válidas del modo completo (320×200 a 4096×2160) dimensionan los buffers VideoOut de CPU o GPU; si falla la consulta o los valores no son plausibles, se conserva el respaldo de 1280×720. El registro muestra por separado las dimensiones completas y del panel, sin asumir que el panel sea el área segura.
 - [x] La implementación se mantiene sin cambios hasta verificar el modo de salida activo y el área segura; cambiar 1280×720 por 1360×768 sin comprobarlo no sería una solución fiable.
 
 ## Lista de implementación
 
-- [ ] Verificar el ABI exacto de `sceVideoOutGetResolutionStatus`, su convención de retorno, símbolo exportado y comportamiento con el toolchain OpenOrbis fijado por el proyecto y el firmware objetivo.
+- [ ] Compilar/enlazar con el toolchain OpenOrbis exacto del proyecto y confirmar que se resuelve la importación; verificar en la PS4 el retorno y las dimensiones informadas.
 - [ ] Registrar al inicio las dimensiones de salida activas y las dimensiones del panel devueltas por la consulta; manejar fallos sin impedir el inicio del escritorio.
 - [ ] Determinar qué dimensiones describen el framebuffer registrado y cuáles describen el área visible. No asumir que `paneWidth`/`paneHeight` son dimensiones del área segura sin pruebas.
-- [ ] Sustituir la geometría de salida de compilación por una estructura de geometría de salida validada en tiempo de ejecución, con anchura, altura y pitch.
+- [x] Sustituir las constantes de salida 1280×720 por anchura/altura validadas en tiempo de ejecución y pitch dinámico; conservar 1280×720 como respaldo si la consulta falla o devuelve dimensiones inverosímiles.
+- [ ] Consolidar la geometría en una estructura explícita y verificar si los cambios de modo durante la ejecución se admiten o no.
 - [ ] Dimensionar la reserva de memoria directa, atributos de buffers, limpieza, escrituras de CPU y diagnósticos BMP según la geometría validada, con comprobaciones de desbordamiento y reserva.
 - [ ] Pasar la misma geometría a la creación de buffers GPU, configuración de framebuffer/render pass, viewport/scissor y todas las rutas de presentación.
 - [ ] Mantener independientes las dimensiones lógicas del escritorio Wine y las dimensiones físicas del buffer VideoOut.
