@@ -24,6 +24,8 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Se comprobó la declaración de la API y la estructura de estado de OpenOrbis, y se confirmó que el enlace del arranque incluye `-lSceVideoOut`.
 - [x] Se añadió una consulta al inicio, después de `sceVideoOutOpen()`. Las dimensiones válidas del modo completo (320×200 a 4096×2160) dimensionan los buffers VideoOut de CPU o GPU; si falla la consulta o los valores no son plausibles, se conserva el respaldo de 1280×720. El registro muestra por separado las dimensiones completas y del panel, sin asumir que el panel sea el área segura.
 - [x] No se sustituyó a ciegas el tamaño del panel 1360×768 del monitor; la consola consulta su propio modo VideoOut activo.
+- [x] Se corrigieron los escapes de salto de línea en los mensajes de diagnóstico de inicio de VideoOut.
+- [x] Se investigaron las alternativas de márgenes y overscan: `sceVideoOutSetWindowModeMargins` no es un control general documentado para pantalla completa, y `sceVideoOutSysSetOverscanRatio` es una interfaz privada sin una firma utilizable en el SDK público.
 
 ## Lista de implementación
 
@@ -35,7 +37,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Dimensionar la reserva de memoria directa, atributos de buffers, limpieza, escrituras de CPU y diagnósticos BMP según la geometría validada; las dimensiones se limitan antes de reservar y se comprueban los fallos de reserva/mapeo.
 - [x] Pasar la misma geometría a la creación de buffers GPU, configuración de framebuffer/render pass, viewport/scissor y todas las rutas de presentación.
 - [ ] Mantener independientes las dimensiones lógicas del escritorio Wine y las dimensiones físicas del buffer VideoOut.
-- [ ] Añadir un margen/escala configurable de área segura si el síntoma se debe al overscan HDMI y no a un modo de framebuffer incorrecto. El comportamiento predeterminado debe mantener visibles todos los píxeles del escritorio; no recortar contenido silenciosamente.
+- [ ] Añadir un margen/escala configurable de área segura si el síntoma se debe al overscan HDMI y no a un modo de framebuffer incorrecto. No llamar a la interfaz privada `sceVideoOutSysSetOverscanRatio` sin garantías documentadas de ABI, permisos y compatibilidad. El comportamiento predeterminado debe mantener visibles todos los píxeles del escritorio; no recortar contenido silenciosamente.
 - [x] Mantener coherentes el ajuste conservando proporción y la opción ESTIRAR por programa, incluidos los márgenes negros laterales o superior/inferior, con el tamaño de salida activo.
 - [ ] Revisar cursor, indicador de actividad, FPS, interfaz Steam, superposición, ventanas separadas y mapeo del puntero respecto del rectángulo visible final del escritorio.
 - [x] Conservar las rutas de respaldo por CPU y la presentación GPU/capas.
