@@ -19,7 +19,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 ## Trabajo completado en esta investigación
 
 - [x] Se volvieron a leer las instrucciones de la rama actual `dev` y la implementación del sink de pantalla.
-- [x] Se confirmó el HEAD de la rama antes de los cambios: `f3b98b622abbeb6880b4c04c6b2363e705aac4c4`.
+- [x] Se confirmó que el trabajo continúa en la rama existente `dev`; esta lista no fija un HEAD que quedaría obsoleto con cada commit.
 - [x] Se siguieron las dimensiones fijas por el registro de VideoOut, el escalado por CPU, la posición del cursor y las llamadas de superposición.
 - [x] Se comprobó la declaración de la API y la estructura de estado de OpenOrbis, y se confirmó que el enlace del arranque incluye `-lSceVideoOut`.
 - [x] Se añadió una consulta al inicio, después de `sceVideoOutOpen()`. Las dimensiones válidas del modo completo (320×200 a 4096×2160) dimensionan los buffers VideoOut de CPU o GPU; si falla la consulta o los valores no son plausibles, se conserva el respaldo de 1280×720. El registro muestra por separado las dimensiones completas y del panel, sin asumir que el panel sea el área segura.
@@ -44,7 +44,7 @@ Mostrar todo el escritorio de OrbisDesk en la pantalla de PS4, sin recortes en l
 - [x] Mantener coherentes el ajuste conservando proporción y la opción ESTIRAR por programa, incluidos los márgenes negros laterales o superior/inferior, con el tamaño de salida activo.
 - [x] Revisar y limitar cursor, indicador de actividad, FPS, interfaz Steam, superposición y ventanas separadas al rectángulo seguro; la validación física del mapeo del puntero sigue pendiente.
 - [x] Conservar las rutas de respaldo por CPU y la presentación GPU/capas.
-- [ ] Añadir pruebas de geometría en el host para modos 16:9 y 16:10 comunes, dimensiones impares, modos pequeños/invalidos y cálculos del área segura.
+- [ ] Añadir pruebas de geometría en el host para modos 16:9 y 16:10 comunes, dimensiones impares, modos pequeños/no válidos y cálculos del área segura.
 - [ ] Ejecutar las comprobaciones específicas del repositorio y revisar el diff final antes de marcar el trabajo de código como terminado.
 
 ## Pruebas físicas en PS4 — pendientes de acceso al hardware del usuario
