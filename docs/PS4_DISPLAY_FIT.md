@@ -9,27 +9,29 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 ## Confirmed from the current `dev` source
 
 - [x] The reported symptom is clipping on all four edges, not just a single offset or one side.
-- [x] `platform/ps4/pw_wine_sink_ps4.c` hardcodes `OUT_WIDTH=1280`, `OUT_HEIGHT=720`, and two output buffers.
+- [x] The original sink hardcoded `OUT_WIDTH=1280`, `OUT_HEIGHT=720`, and two output buffers; the sink now queries the active VideoOut mode and sizes its output buffers from the reported `width`/`height`.
 - [x] `open_video()` allocates/registers the VideoOut buffers using those fixed dimensions. The CPU fallback also clears and addresses the output using the fixed height, width and pitch.
 - [x] `show()` scales the desktop into the fixed 1280×720 rectangle, centers it, and optionally stretches it to the full rectangle when the per-program ESTIRAR setting is enabled.
 - [x] Cursor placement, busy indicator, Steam UI, overlay and separate-window composition are passed the same fixed output geometry.
 - [x] The GPU sink already accepts output width and height in `pw_sink_gpu_buffers()`, but its output resources and viewport/framebuffer state must be audited before introducing runtime dimensions.
-- [x] The checked-in OpenOrbis headers declare `sceVideoOutGetResolutionStatus()`; `OrbisVideoOutResolutionStatus` contains `width`, `height`, `paneWidth` and `paneHeight`. Availability in the exact linked SDK/runtime and the meaning of each field for this title still need verification.
+- [x] The OpenOrbis declaration uses `int32_t sceVideoOutGetResolutionStatus(int32_t, OrbisVideoOutResolutionStatus *)`; the status exposes `width`, `height`, `paneWidth` and `paneHeight`. The project's boot linker already links `-lSceVideoOut`. The exact pinned SDK import and target-runtime call still require a build and PS4 run.
 
 ## Work completed in this investigation
 
 - [x] Re-read the current `dev` branch instructions and display sink implementation.
 - [x] Confirmed the current branch head before making changes: `f3b98b622abbeb6880b4c04c6b2363e705aac4c4`.
 - [x] Traced the fixed output dimensions through VideoOut registration, CPU scaling, cursor placement and overlay calls.
-- [x] Checked the public OpenOrbis declarations for the VideoOut resolution-status API and structure.
+- [x] Checked the OpenOrbis API declaration and status structure, and confirmed the boot link includes `-lSceVideoOut`.
+- [x] Added a startup query after `sceVideoOutOpen()`. Valid full-mode dimensions (320×200 through 4096×2160) now size the CPU or GPU VideoOut buffers; invalid/query-failure results retain the 1280×720 fallback. The log records both full and pane dimensions without treating pane dimensions as safe-area values.
 - [x] Kept the implementation unchanged pending verification of the active output mode and safe-area behavior; changing 1280×720 to 1360×768 by guess would not be a reliable fix.
 
 ## Implementation checklist
 
-- [ ] Verify the exact `sceVideoOutGetResolutionStatus` ABI, return convention, exported symbol and behavior with the project's pinned OpenOrbis toolchain and target firmware.
+- [ ] Build/link against the project's exact pinned OpenOrbis toolchain and confirm the import resolves; verify the call's runtime return and reported dimensions on target firmware.
 - [ ] Log the queried active output dimensions and pane dimensions at startup; handle query failure without preventing the desktop from starting.
 - [ ] Decide which reported dimensions describe the registered framebuffer and which describe the visible output/pane. Do not assume `paneWidth`/`paneHeight` are safe-area dimensions without evidence.
-- [ ] Replace compile-time output geometry with one validated runtime output-geometry structure, including width, height and pitch.
+- [x] Replace the compile-time 1280×720 output constants with validated runtime width/height and runtime pitch; preserve a 1280×720 fallback when the query fails or returns implausible dimensions.
+- [ ] Consolidate the runtime geometry into one explicit structure and verify that mode changes during a running title are either handled or explicitly unsupported.
 - [ ] Size direct-memory allocation, buffer attributes, clearing, CPU writes and BMP diagnostics from the validated runtime geometry, with overflow and allocation checks.
 - [ ] Pass the same geometry through GPU buffer creation, framebuffer/render-pass setup, viewport/scissor and all presentation paths.
 - [ ] Keep the logical Wine desktop dimensions independent from the physical VideoOut buffer dimensions.
@@ -55,6 +57,6 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 
 ## Current status
 
-**Diagnosis:** fixed 1280×720 output geometry is confirmed. The user's four-edge clipping is consistent with a mismatch between the sink's full-frame output and the display's visible area, but the exact cause (active-mode mismatch, monitor overscan/safe-area scaling, or both) is not yet proven.
+**Diagnosis:** the fixed 1280×720 output geometry was confirmed and has now been replaced by a startup query of the active VideoOut mode. The full-mode and pane dimensions are logged separately. This addresses a framebuffer/output-mode mismatch when one exists, but does not yet compensate for HDMI overscan or prove that the pane fields represent a safe area.
 
-**Source fix:** not implemented yet. The next safe step is to establish the runtime VideoOut mode and distinguish output-mode sizing from overscan compensation. No hardware acceptance is claimed.
+**Source status:** runtime output sizing is implemented on `dev`; compile/link validation and physical PS4 acceptance remain pending. No hardware fix is claimed yet.
