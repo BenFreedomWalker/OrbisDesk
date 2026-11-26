@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <orbis/libkernel.h>
 #include <orbis/VideoOut.h>
+#include "pw_display_fit.h"
 
 /* A build may lower the BMP dumps (each is a synchronous ~2 MB write before the flip)
  * and add process time to the frame markers. The defaults keep the fork evidence. */
@@ -1032,20 +1033,17 @@ static int show(void)
 #endif
     ++flips;
     uint32_t *target=buffers[flips%OUT_BUFFERS];
-    /* Fit the desktop inside the PS4-configured safe area, not the full HDMI raster. */
-    uint32_t safe_width=(uint32_t)((double)OUT_WIDTH*display_safe_area_ratio);
-    uint32_t safe_height=(uint32_t)((double)OUT_HEIGHT*display_safe_area_ratio);
-    if(safe_width<1) safe_width=OUT_WIDTH;
-    if(safe_height<1) safe_height=OUT_HEIGHT;
-    uint32_t safe_left=(OUT_WIDTH-safe_width)/2,safe_top=(OUT_HEIGHT-safe_height)/2;
-    /* Nearest scaling that keeps the aspect, centred within the safe rectangle. */
-    uint32_t scale_w=safe_width,scale_h=(uint32_t)((uint64_t)height*safe_width/width);
-    if(scale_h>safe_height) {scale_h=safe_height;scale_w=(uint32_t)((uint64_t)width*safe_height/height);}
+    /* Compute one bounded geometry for desktop content and every screen-space interface. */
+    int stretch=0;
 #ifdef PW_SINK_EXTERNAL_INPUT
-    /* W266: ESTIRAR fills the safe rectangle on each axis; it does not override system safe area. */
-    if(pw_hw_overlay_stretch()) {scale_w=safe_width;scale_h=safe_height;}
+    /* W266: ESTIRAR fills the safe rectangle; it does not override system safe area. */
+    stretch=pw_hw_overlay_stretch();
 #endif
-    uint32_t left=safe_left+(safe_width-scale_w)/2,top=safe_top+(safe_height-scale_h)/2;
+    struct pw_display_fit fit;
+    if(!pw_display_fit_calculate(OUT_WIDTH,OUT_HEIGHT,width,height,display_safe_area_ratio,stretch,&fit)) return -1;
+    uint32_t safe_width=fit.safe_width,safe_height=fit.safe_height;
+    uint32_t safe_left=fit.safe_left,safe_top=fit.safe_top;
+    uint32_t scale_w=fit.width,scale_h=fit.height,left=fit.left,top=fit.top;
     uint64_t start=sceKernelGetProcessTime();
 #ifdef PW_SINK_GPU
     if(gpu && (layered || (bgra==gpu_screen && width==gpu_width && height==gpu_height))) {
