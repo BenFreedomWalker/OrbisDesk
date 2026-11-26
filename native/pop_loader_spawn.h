@@ -276,27 +276,41 @@ unsigned long long pw_hw_separate_window(int x, int y){
 }
 /* Called by the sink on each output frame: the desktop (desk_w x desk_h) is shown scaled at
  * (left,top,scale_w,scale_h) of the output; draw the separate window's pixels at its desktop rectangle with
- * the same mapping. Returns 1 when something was drawn (the sink then redraws the pointer over it). */
-int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,unsigned left,unsigned top,
-                        unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h);
-int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,unsigned left,unsigned top,
-                        unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h){
-    if(!desk_w||!desk_h||!scale_w||!scale_h)return 0;
+ * the same mapping, clipped to the system safe rectangle. Returns 1 when a window frame is present. */
+int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,
+                        unsigned safe_left,unsigned safe_top,unsigned safe_width,unsigned safe_height,
+                        unsigned left,unsigned top,unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h);
+int pw_hw_separate_draw(uint32_t *target,unsigned pitch,unsigned out_w,unsigned out_h,
+                        unsigned safe_left,unsigned safe_top,unsigned safe_width,unsigned safe_height,
+                        unsigned left,unsigned top,unsigned scale_w,unsigned scale_h,unsigned desk_w,unsigned desk_h){
+    if(!target||!desk_w||!desk_h||!scale_w||!scale_h||!safe_width||!safe_height||
+       safe_left>out_w||safe_top>out_h||safe_width>out_w-safe_left||safe_height>out_h-safe_top)return 0;
     if(pthread_mutex_trylock(&pop_sep_surface_lock))return 0;   /* never stall the presenter */
     int drawn=0;
     if(pop_sep_visible&&pop_sep_pixels){
         const struct pop_sep_frame *f=&pop_sep_shown;
-        long x0=(long)left+(long)f->x*scale_w/desk_w,y0=(long)top+(long)f->y*scale_h/desk_h;
-        long x1=(long)left+(long)(f->x+f->w)*scale_w/desk_w,y1=(long)top+(long)(f->y+f->h)*scale_h/desk_h;
-        if(x0<0)x0=0;if(y0<0)y0=0;if(x1>(long)out_w)x1=out_w;if(y1>(long)out_h)y1=out_h;
-        long ow=(long)(f->w)*scale_w/desk_w,oh=(long)(f->h)*scale_h/desk_h;
-        long ox=(long)left+(long)f->x*scale_w/desk_w,oy=(long)top+(long)f->y*scale_h/desk_h;
-        if(ow>0&&oh>0)for(long y=y0;y<y1;y++){
-            long sy=(y-oy)*f->h/oh;if(sy<0||sy>=f->h)continue;
-            const uint32_t *row=pop_sep_pixels+(size_t)sy*f->w;uint32_t *out=target+(size_t)y*pitch;
-            for(long x=x0;x<x1;x++){long sx=(x-ox)*f->w/ow;if(sx>=0&&sx<f->w)out[x]=row[sx]|0xff000000u;}
+        long fx=f->x,fy=f->y,fw=f->w,fh=f->h;
+        long ox=(long)left+fx*scale_w/desk_w,oy=(long)top+fy*scale_h/desk_h;
+        long x0=ox,y0=oy;
+        long x1=(long)left+(fx+fw)*scale_w/desk_w,y1=(long)top+(fy+fh)*scale_h/desk_h;
+        long safe_right=(long)safe_left+safe_width,safe_bottom=(long)safe_top+safe_height;
+        if(x0<(long)safe_left)x0=safe_left;
+        if(y0<(long)safe_top)y0=safe_top;
+        if(x1>safe_right)x1=safe_right;
+        if(y1>safe_bottom)y1=safe_bottom;
+        long ow=fw*scale_w/desk_w,oh=fh*scale_h/desk_h;
+        if(ow>0&&oh>0&&x0<x1&&y0<y1) {
+            for(long y=y0;y<y1;y++){
+                long sy=(y-oy)*fh/oh;if(sy<0||sy>=fh)continue;
+                const uint32_t *row=pop_sep_pixels+(size_t)sy*(size_t)fw;
+                uint32_t *out=target+(size_t)y*pitch;
+                for(long x=x0;x<x1;x++){
+                    long sx=(x-ox)*fw/ow;
+                    if(sx>=0&&sx<fw)out[x]=row[sx]|0xff000000u;
+                }
+            }
+            drawn=1;
         }
-        drawn=1;
     }
     pthread_mutex_unlock(&pop_sep_surface_lock);
     return drawn;
