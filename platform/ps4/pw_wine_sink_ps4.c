@@ -132,17 +132,17 @@ static int open_video(void)
        resolution.width<=4096 && resolution.height<=2160) {
         OUT_WIDTH=resolution.width;OUT_HEIGHT=resolution.height;
     } else {
-        fprintf(stderr,"PWBOOT video_out_resolution_unavailable rc=%x reported=%ux%u; using %ux%u\\n",
+        fprintf(stderr,"PWBOOT video_out_resolution_unavailable rc=%x reported=%ux%u; using %ux%u\n",
                 resolution_rc,resolution.width,resolution.height,OUT_WIDTH,OUT_HEIGHT);
     }
-    fprintf(stderr,"PWBOOT video_out_mode %ux%u pane=%ux%u rc=%x\\n",OUT_WIDTH,OUT_HEIGHT,
+    fprintf(stderr,"PWBOOT video_out_mode %ux%u pane=%ux%u rc=%x\n",OUT_WIDTH,OUT_HEIGHT,
             resolution.paneWidth,resolution.paneHeight,resolution_rc);
     pitch=OUT_WIDTH;
     const size_t bytes=(size_t)OUT_WIDTH*OUT_HEIGHT*4,aligned=(bytes+0x1fffff)&~(size_t)0x1fffff;
 #ifdef PW_SINK_GPU
     if(!pw_sink_gpu_buffers(handle,OUT_WIDTH,OUT_HEIGHT,buffers,&pitch)) {
         gpu=1;
-        fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u gpu=1 pitch=%u\\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS,pitch);
+        fprintf(stderr,"PWBOOT video_out_ready %ux%u buffers=%u gpu=1 pitch=%u\n",OUT_WIDTH,OUT_HEIGHT,OUT_BUFFERS,pitch);
         return 0;
     }
     fprintf(stderr,"PWSINK gpu_unavailable: CPU copy\\n");
