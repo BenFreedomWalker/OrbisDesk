@@ -24,6 +24,8 @@ Regenerate both languages: `python3 tools/build-doc-index.py`.
 
 ## Emulator and desktop validation
 
+- [PS4_DISPLAY_FIT.md](PS4_DISPLAY_FIT.md) — PS4 display fit and edge-clipping checklist
+
 - [SHAD_W284_DESKTOP.md](SHAD_W284_DESKTOP.md) — Desktop W284 in the fork Linux of shadPS4
 - [TASKBAR_CENTER_FIX.md](TASKBAR_CENTER_FIX.md) — Taskbar background and Start menu checks in shadPS4
 
