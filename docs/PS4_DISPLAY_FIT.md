@@ -35,7 +35,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Log the queried active output dimensions and pane dimensions at startup; query failure retains the 1280×720 fallback and does not block startup.
 - [ ] Verify on the target PS4 that `width`/`height` are accepted as the registered framebuffer size; determine the meaning of `paneWidth`/`paneHeight` without assuming they are safe-area dimensions.
 - [x] Replace the compile-time 1280×720 output constants with validated runtime width/height and runtime pitch; preserve a 1280×720 fallback when the query fails or returns implausible dimensions.
-- [ ] Consolidate the runtime geometry into one explicit structure and verify that mode changes during a running title are either handled or explicitly unsupported.
+- [x] Consolidate the output and safe-area rectangles into `struct pw_display_fit`, shared by the PS4 sink and host tests. Output-mode changes during a running title are not monitored; the sink uses the mode captured at startup.
 - [x] Size direct-memory allocation, buffer attributes, clearing, CPU writes and BMP diagnostics from the validated runtime geometry; dimensions are bounded before allocation and allocation/map failures are checked.
 - [x] Pass the same geometry through GPU buffer creation, framebuffer/render-pass setup, viewport/scissor and all presentation paths.
 - [ ] Keep the logical Wine desktop dimensions independent from the physical VideoOut buffer dimensions.
@@ -47,7 +47,7 @@ Make the OrbisDesk desktop fully visible on the PS4 display, with no clipping at
 - [x] Preserve CPU fallback and GPU/layered presentation behavior.
 - [x] Extract output/safe-area geometry into `platform/ps4/pw_display_fit.h`; compare aspect ratios before integer division so fractional overflow cannot be hidden by truncation, and round safe-area dimensions to the nearest pixel.
 - [x] Add the host C geometry cases and run `tests/test_display_fit_host.py` in the PR metadata checks.
-- [ ] Run the repository's focused checks and inspect the final diff before marking source work complete.
+- [x] Compile and run `tests/display_fit_host_check.c` on the host with GCC (`-std=c11 -O2 -Wall -Wextra -Werror`); all 12 geometry cases pass. This does not replace the pending PS4-target build or hardware validation.
 
 ## Host-side geometry check
 
