@@ -233,34 +233,51 @@ static int pointer_off(void)
     int mode=pw_hw_cursor_mode();
     return mode==2 || (mode!=1 && pointer_hidden);
 }
-static void draw_cursor(uint32_t *target,uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h)
+static void clamp_cursor_origin(int *x,int *y,uint32_t safe_left,uint32_t safe_top,
+                                  uint32_t safe_width,uint32_t safe_height)
+{
+    int max_x=(int)(safe_left+(safe_width>16?safe_width-16:0));
+    int max_y=(int)(safe_top+(safe_height>17?safe_height-17:0));
+    if(*x<(int)safe_left) *x=(int)safe_left;
+    if(*y<(int)safe_top) *y=(int)safe_top;
+    if(*x>max_x) *x=max_x;
+    if(*y>max_y) *y=max_y;
+}
+static void draw_cursor(uint32_t *target,uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h,
+                        uint32_t safe_left,uint32_t safe_top,uint32_t safe_width,uint32_t safe_height)
 {
     int x,y,w,h;
     if(pointer_off() || !pw_hw_cursor(&x,&y,&w,&h) || w<=0 || h<=0) return;
     int ox=(int)left+(int)((int64_t)x*scale_w/w),oy=(int)top+(int)((int64_t)y*scale_h/h);
+    clamp_cursor_origin(&ox,&oy,safe_left,safe_top,safe_width,safe_height);
     for(int r=0;r<(int)(sizeof(arrow)/sizeof(arrow[0]));++r)
-        for(int c=0;arrow[r][c];++c) {
-            int px=ox+c,py=oy+r;
-            if(px<0 || py<0 || px>=OUT_WIDTH || py>=OUT_HEIGHT) continue;
-            if(arrow[r][c]=='1') target[(size_t)py*pitch+px]=0xff000000u;
-            else if(arrow[r][c]=='2') target[(size_t)py*pitch+px]=0xffffffffu;
+        for(int col=0;arrow[r][col];++col) {
+            int px=ox+col,py=oy+r;
+            if(px<(int)safe_left || py<(int)safe_top ||
+               px>=(int)(safe_left+safe_width) || py>=(int)(safe_top+safe_height)) continue;
+            if(arrow[r][col]=='1') target[(size_t)py*pitch+px]=0xff000000u;
+            else if(arrow[r][col]=='2') target[(size_t)py*pitch+px]=0xffffffffu;
         }
 }
 /* where draw_cursor puts the arrow's top-left pixel; 0 when there is no pointer */
-static int cursor_origin(uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h,int *ox,int *oy)
+static int cursor_origin(uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h,
+                         uint32_t safe_left,uint32_t safe_top,uint32_t safe_width,uint32_t safe_height,
+                         int *ox,int *oy)
 {
     int x,y,w,h;
     if(pointer_off() || !pw_hw_cursor(&x,&y,&w,&h) || w<=0 || h<=0) return 0;
     *ox=(int)left+(int)((int64_t)x*scale_w/w);*oy=(int)top+(int)((int64_t)y*scale_h/h);
+    clamp_cursor_origin(ox,oy,safe_left,safe_top,safe_width,safe_height);
     return 1;
 }
 /* W293: while a program starts (native/hw_overlay.c), eight dots in a ring by the arrow, lower right, as Windows'
  * IDC_APPSTARTING; the brightest turns with the frame. Drawn into the output after the GPU or CPU has drawn it. */
-static void draw_busy(uint32_t *target,uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h)
+static void draw_busy(uint32_t *target,uint32_t left,uint32_t top,uint32_t scale_w,uint32_t scale_h,
+                      uint32_t safe_left,uint32_t safe_top,uint32_t safe_width,uint32_t safe_height)
 {
     static const signed char dots[8][2]={{6,0},{4,4},{0,6},{-4,4},{-6,0},{-4,-4},{0,-6},{4,-4}};
     int frame=pw_hw_busy_frame(),ox,oy;
-    if(frame<0 || !cursor_origin(left,top,scale_w,scale_h,&ox,&oy)) return;
+    if(frame<0 || !cursor_origin(left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height,&ox,&oy)) return;
     for(int i=0;i<8;++i) {
         int age=(frame-i+8)%8;  /* 0 the brightest, then the ones behind it */
         uint32_t color=!age?0xffffffffu:age<3?0xffb0b0b0u:0xff606060u;
@@ -268,7 +285,8 @@ static void draw_busy(uint32_t *target,uint32_t left,uint32_t top,uint32_t scale
         for(int y=-2;y<2;++y)
             for(int x=-2;x<2;++x) {
                 int px=cx+x,py=cy+y;
-                if(px<0 || py<0 || px>=OUT_WIDTH || py>=OUT_HEIGHT) continue;
+                if(px<(int)safe_left || py<(int)safe_top || px>=(int)(safe_left+safe_width) ||
+                   py>=(int)(safe_top+safe_height)) continue;
                 target[(size_t)py*pitch+px]=x==-2 || y==-2 || x==1 || y==1?0xff000000u:color;
             }
     }
@@ -1033,7 +1051,7 @@ static int show(void)
     if(gpu && (layered || (bgra==gpu_screen && width==gpu_width && height==gpu_height))) {
         int ox=-1000,oy=-1000;
 #ifdef PW_SINK_EXTERNAL_INPUT
-        cursor_origin(left,top,scale_w,scale_h,&ox,&oy);
+        cursor_origin(left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height,&ox,&oy);
 #endif
         unsigned buffer=(unsigned)(flips%OUT_BUFFERS);
         const struct pw_wine_layer *stack=layers;
@@ -1070,7 +1088,7 @@ static int show(void)
         }
     }
 #ifdef PW_SINK_EXTERNAL_INPUT
-    draw_cursor(target,left,top,scale_w,scale_h);
+    draw_cursor(target,left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height);
 #endif
     show_stats("cpu",start);
 #ifdef PW_SINK_GPU
@@ -1079,7 +1097,7 @@ flip:;
 #ifdef PW_SINK_EXTERNAL_INPUT
     if(pw_hw_separate_draw(target,pitch,OUT_WIDTH,OUT_HEIGHT,left,top,scale_w,scale_h,width,height))
         draw_cursor(target,left,top,scale_w,scale_h);  /* the pointer stays over the separate window */
-    draw_busy(target,left,top,scale_w,scale_h);  /* W293 */
+    draw_busy(target,left,top,scale_w,scale_h,safe_left,safe_top,safe_width,safe_height);  /* W293 */
     uint32_t *safe_target=target+(size_t)safe_top*pitch+safe_left;
     draw_fps(safe_target,safe_height,sceKernelGetProcessTime());
     pw_hw_steam_draw(safe_target,pitch,safe_width,safe_height);
